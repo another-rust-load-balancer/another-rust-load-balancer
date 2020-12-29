@@ -19,7 +19,7 @@ use tokio_rustls::{
 };
 
 static LOCAL_ADDRESS: &str = "127.0.0.1:3000";
-static REMOTE_ADDRESS: &str = "www.google.de";
+static REMOTE_ADDRESS: &str = "www.google.de:80";
 
 #[tokio::main]
 pub async fn main() -> Result<(), std::io::Error> {

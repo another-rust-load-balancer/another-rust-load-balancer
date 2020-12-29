@@ -1,0 +1,30 @@
+* text=auto
+
+# Explicitly declare text files you want to always be normalized and converted to native line endings on checkout.
+*.adoc         text
+*.config       text
+*.md           text
+*.properties   text
+*.rs           text
+*.svg          text
+*.txt          text
+*.xdt          text
+*.xml          text
+*.yaml         text
+*.yml          text
+.gitattributes text
+.gitignore     text
+Cargo.lock     text
+Cargo.toml     text
+
+*.sh           text eol=lf
+
+*.bat          text eol=crlf
+*.cmd          text eol=crlf
+
+# Denote all files that are truly binary and should not be modified.
+*.gif          binary
+*.jpg          binary
+*.pdf          binary
+*.png          binary
+*.zip          binary

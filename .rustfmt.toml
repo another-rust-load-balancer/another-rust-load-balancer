@@ -193,11 +193,11 @@ tab_spaces = 2
 
 # Reorder import statements alphabetically.
 # Default: false
-#   reorder_imports =
+reorder_imports = true
 
 # Reorder lists of names in import statements alphabetically.
 # Default: false
-#   reorder_imported_names =
+reorder_imported_names = true
 
 # Maximum line length for single line if-else expressions.
 # A value of zero means always break if-else expressions.

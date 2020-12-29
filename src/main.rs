@@ -10,11 +10,12 @@ use tokio::{
   io::{split, AsyncReadExt, AsyncWriteExt},
   net::{TcpListener, TcpStream},
 };
-use tokio_rustls::rustls::{Certificate, NoClientAuth, PrivateKey, ServerConfig};
-use tokio_rustls::TlsAcceptor;
 use tokio_rustls::{
-  rustls::internal::pemfile::{certs, rsa_private_keys},
-  server::TlsStream,
+  rustls::{
+    internal::pemfile::{certs, rsa_private_keys},
+    Certificate, NoClientAuth, PrivateKey, ServerConfig,
+  },
+  TlsAcceptor,
 };
 
 static LOCAL_ADDRESS: &str = "127.0.0.1:3000";
@@ -43,8 +44,8 @@ pub async fn main() -> Result<(), std::io::Error> {
 
   loop {
     let (stream, _) = listener.accept().await?;
-    let tls_stream = tls_acceptor.accept(stream).await?;
-    tokio::spawn(process_stream(tls_stream));
+    let tls_acceptor = tls_acceptor.clone();
+    tokio::spawn(process_stream(stream, tls_acceptor));
   }
 }
 
@@ -58,8 +59,9 @@ fn load_keys(path: &Path) -> std::io::Result<Vec<PrivateKey>> {
     .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid key"))
 }
 
-async fn process_stream(stream: TlsStream<TcpStream>) -> Result<(), std::io::Error> {
-  let (mut client_read, mut client_write) = split(stream);
+async fn process_stream(stream: TcpStream, tls_acceptor: TlsAcceptor) -> Result<(), std::io::Error> {
+  let tls_stream = tls_acceptor.accept(stream).await?;
+  let (mut client_read, mut client_write) = split(tls_stream);
 
   let mut remote = TcpStream::connect(REMOTE_ADDRESS).await?;
   let (mut remote_read, mut remote_write) = remote.split();

@@ -13,3 +13,4 @@ tokio-util = { version = "0.6", features = ["full"] }
 # futures = "0.3"
 log4rs = "1.0"
 log = "0.4"
+tokio-rustls = "0.22"

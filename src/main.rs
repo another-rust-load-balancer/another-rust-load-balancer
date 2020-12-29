@@ -5,16 +5,20 @@ use log4rs::{
   config::{Appender, Root},
   Config,
 };
+use std::{fs::File, io::BufReader, path::Path, sync::Arc};
 use tokio::{
-  io::{AsyncReadExt, AsyncWriteExt},
-  net::{
-    tcp::{ReadHalf, WriteHalf},
-    TcpListener, TcpStream,
-  },
+  io::{split, AsyncReadExt, AsyncWriteExt},
+  net::{TcpListener, TcpStream},
+};
+use tokio_rustls::rustls::{Certificate, NoClientAuth, PrivateKey, ServerConfig};
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::{
+  rustls::internal::pemfile::{certs, rsa_private_keys},
+  server::TlsStream,
 };
 
 static LOCAL_ADDRESS: &str = "127.0.0.1:3000";
-static REMOTE_ADDRESS: &str = "127.0.0.1:8081";
+static REMOTE_ADDRESS: &str = "www.google.de";
 
 #[tokio::main]
 pub async fn main() -> Result<(), std::io::Error> {
@@ -27,30 +31,52 @@ pub async fn main() -> Result<(), std::io::Error> {
 
   log4rs::init_config(config).expect("Logging should not fail");
 
+  let certs = load_certs(Path::new("x509/server-1.cer"))?;
+  let mut keys = load_keys(Path::new("x509/server.key"))?;
+  let mut tls_config = ServerConfig::new(NoClientAuth::new());
+  tls_config
+    .set_single_cert(certs, keys.remove(0))
+    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+  let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
+
   let listener = TcpListener::bind(LOCAL_ADDRESS).await?;
 
   loop {
     let (stream, _) = listener.accept().await?;
-
-    tokio::spawn(process_stream(stream));
+    let tls_stream = tls_acceptor.accept(stream).await?;
+    tokio::spawn(process_stream(tls_stream));
   }
 }
 
-async fn process_stream(mut stream: TcpStream) -> Result<(), std::io::Error> {
-  let (client_read, client_write) = stream.split();
+fn load_certs(path: &Path) -> std::io::Result<Vec<Certificate>> {
+  certs(&mut BufReader::new(File::open(path)?))
+    .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cert"))
+}
+
+fn load_keys(path: &Path) -> std::io::Result<Vec<PrivateKey>> {
+  rsa_private_keys(&mut BufReader::new(File::open(path)?))
+    .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid key"))
+}
+
+async fn process_stream(stream: TlsStream<TcpStream>) -> Result<(), std::io::Error> {
+  let (mut client_read, mut client_write) = split(stream);
 
   let mut remote = TcpStream::connect(REMOTE_ADDRESS).await?;
-  let (remote_read, remote_write) = remote.split();
+  let (mut remote_read, mut remote_write) = remote.split();
 
   tokio::try_join!(
-    pipe_stream(client_read, remote_write),
-    pipe_stream(remote_read, client_write)
+    pipe_stream(&mut client_read, &mut remote_write),
+    pipe_stream(&mut remote_read, &mut client_write)
   )?;
 
   Ok(())
 }
 
-async fn pipe_stream(mut reader: ReadHalf<'_>, mut writer: WriteHalf<'_>) -> Result<(), std::io::Error> {
+async fn pipe_stream<R, W>(mut reader: R, mut writer: W) -> Result<(), std::io::Error>
+where
+  R: AsyncReadExt + Unpin,
+  W: AsyncWriteExt + Unpin,
+{
   let mut buffer = BytesMut::with_capacity(4 << 10); // 4096
 
   loop {

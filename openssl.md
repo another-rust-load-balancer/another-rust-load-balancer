@@ -1,4 +1,4 @@
-Steps to create our CA and sign the first server certificate as described in <https://www.makethenmakeinstall.com/2014/05/ssl-client-authentication-step-by-step/>.
+Steps to create our CA and sign the first server certificate as described in <https://www.makethenmakeinstall.com/2014/05/ssl-client-authentication-step-by-step/> and <https://security.stackexchange.com/a/176084>.
 
 ```bash
 openssl req -subj "/C=DE/ST=Deutschland/L=Muenchen/O=Another Rust Load Balancer/CN=root" -newkey rsa:4096 -keyform PEM -keyout ca.key -x509 -days 3650 -outform PEM -out ca.cer -nodes

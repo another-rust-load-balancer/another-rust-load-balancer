@@ -32,7 +32,7 @@ pub async fn main() -> Result<(), std::io::Error> {
 
   log4rs::init_config(config).expect("Logging should not fail");
 
-  let certs = load_certs(Path::new("x509/server-1.cer"))?;
+  let certs = load_certs(Path::new("x509/server.cer"))?;
   let mut keys = load_keys(Path::new("x509/server.key"))?;
   let mut tls_config = ServerConfig::new(NoClientAuth::new());
   tls_config

@@ -38,5 +38,5 @@ jobs:
       - name: Deploy | Artifact
         uses: actions/upload-artifact@v2
         with:
-          name: ${{ artifact-filename }}
-          path: target/release/${{ artifact-filename }}
+          name: ${{ matrix.artifact-filename }}
+          path: target/release/${{ matrix.artifact-filename }}

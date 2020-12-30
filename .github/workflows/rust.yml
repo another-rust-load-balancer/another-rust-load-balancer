@@ -2,21 +2,49 @@ name: Rust
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-
-    runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, windows-latest]
+        include:
+          - platform: ubuntu-latest
+            artifact-filename: another-rust-load-balancer
+          - platform: windows-latest
+            artifact-filename: another-rust-load-balancer.exe
+    runs-on: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v2
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+      - name: Setup | Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Setup | Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      - name: Build | Debug
+        run: cargo build --verbose
+      - name: Tests
+        run: cargo test --verbose
+      - name: Build | Release
+        run: cargo build --release
+      - name: Deploy | Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.artifact-filename }}
+          path: target/release/${{ matrix.artifact-filename }}

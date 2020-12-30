@@ -7,8 +7,9 @@ use log4rs::{
 };
 use std::{fs::File, io::BufReader, path::Path, sync::Arc};
 use tokio::{
-  io::{split, AsyncReadExt, AsyncWriteExt},
+  io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
   net::{TcpListener, TcpStream},
+  try_join,
 };
 use tokio_rustls::{
   rustls::{
@@ -18,20 +19,33 @@ use tokio_rustls::{
   TlsAcceptor,
 };
 
-const LOCAL_ADDRESS: &str = "localhost:3000";
+const LOCAL_HTTP_ADDRESS: &str = "localhost:3000";
+const LOCAL_HTTPS_ADDRESS: &str = "localhost:3001";
 const REMOTE_ADDRESS: &str = "localhost:8081";
 
 #[tokio::main]
 pub async fn main() -> Result<(), std::io::Error> {
   let stdout = ConsoleAppender::builder().build();
-
   let config = Config::builder()
     .appender(Appender::builder().build("stdout", Box::new(stdout)))
     .build(Root::builder().appender("stdout").build(LevelFilter::Trace))
     .unwrap();
-
   log4rs::init_config(config).expect("Logging should not fail");
 
+  try_join!(listen_for_http_request(), listen_for_https_request())?;
+
+  Ok(())
+}
+
+async fn listen_for_http_request() -> Result<(), std::io::Error> {
+  let listener = TcpListener::bind(LOCAL_HTTP_ADDRESS).await?;
+  loop {
+    let (stream, _) = listener.accept().await?;
+    tokio::spawn(process_stream(stream));
+  }
+}
+
+async fn listen_for_https_request() -> Result<(), std::io::Error> {
   let certs = load_certs(Path::new("x509/server.cer"))?;
   let mut keys = load_keys(Path::new("x509/server.key"))?;
   let mut tls_config = ServerConfig::new(NoClientAuth::new());
@@ -40,12 +54,12 @@ pub async fn main() -> Result<(), std::io::Error> {
     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
   let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
 
-  let listener = TcpListener::bind(LOCAL_ADDRESS).await?;
+  let listener = TcpListener::bind(LOCAL_HTTPS_ADDRESS).await?;
 
   loop {
     let (stream, _) = listener.accept().await?;
     let tls_acceptor = tls_acceptor.clone();
-    tokio::spawn(process_stream(stream, tls_acceptor));
+    tokio::spawn(process_https_stream(stream, tls_acceptor));
   }
 }
 
@@ -59,16 +73,20 @@ fn load_keys(path: &Path) -> std::io::Result<Vec<PrivateKey>> {
     .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid key"))
 }
 
-async fn process_stream(stream: TcpStream, tls_acceptor: TlsAcceptor) -> Result<(), std::io::Error> {
+async fn process_https_stream(stream: TcpStream, tls_acceptor: TlsAcceptor) -> Result<(), std::io::Error> {
   let tls_stream = tls_acceptor.accept(stream).await?;
-  let (mut client_read, mut client_write) = split(tls_stream);
+  process_stream(tls_stream).await
+}
 
-  let mut remote = TcpStream::connect(REMOTE_ADDRESS).await?;
-  let (mut remote_read, mut remote_write) = remote.split();
+async fn process_stream<S: AsyncRead + AsyncWrite>(client: S) -> Result<(), std::io::Error> {
+  let (mut client_read, mut client_write) = split(client);
 
-  tokio::try_join!(
-    pipe_stream(&mut client_read, &mut remote_write),
-    pipe_stream(&mut remote_read, &mut client_write)
+  let server = TcpStream::connect(REMOTE_ADDRESS).await?;
+  let (mut server_read, mut server_write) = split(server);
+
+  try_join!(
+    pipe_stream(&mut client_read, &mut server_write),
+    pipe_stream(&mut server_read, &mut client_write)
   )?;
 
   Ok(())

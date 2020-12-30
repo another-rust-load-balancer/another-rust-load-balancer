@@ -18,8 +18,8 @@ use tokio_rustls::{
   TlsAcceptor,
 };
 
-static LOCAL_ADDRESS: &str = "127.0.0.1:3000";
-static REMOTE_ADDRESS: &str = "www.google.de:80";
+const LOCAL_ADDRESS: &str = "localhost:3000";
+const REMOTE_ADDRESS: &str = "localhost:8081";
 
 #[tokio::main]
 pub async fn main() -> Result<(), std::io::Error> {

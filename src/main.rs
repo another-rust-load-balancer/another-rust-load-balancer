@@ -6,7 +6,9 @@ use log4rs::{
   Config,
 };
 use std::io::{self, ErrorKind::InvalidData};
-use std::{fs::File, io::BufReader, path::Path, sync::Arc};
+use std::{fs::File, io::BufReader, path::Path, sync::Arc, sync::Mutex};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use tokio::{
   io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
   net::{TcpListener, TcpStream},
@@ -23,7 +25,10 @@ use tokio_rustls::{
 
 const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:3000";
 const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:3001";
-const REMOTE_ADDRESS: &str = "localhost:8081";
+// for now, provide Backend IPs as global fixed sized slice
+static REMOTE_ADDRESSES : [&'static str; 3] = ["172.28.1.1:80","172.28.1.2:80","172.28.1.3:80"];
+// possible choices: Static Random, Round Robin, Http Host
+static LB_MEHOD: &str = "Static Random";
 
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {
@@ -34,20 +39,26 @@ pub async fn main() -> Result<(), io::Error> {
     .unwrap();
   log4rs::init_config(config).expect("Logging should not fail");
 
-  try_join!(listen_for_http_request(), listen_for_https_request())?;
+  let round_robin_counter  = Arc::new(Mutex::new(0));
+  let rrc_handle1 = round_robin_counter.clone();
+  let rrc_handle2 = round_robin_counter.clone();
+
+  try_join!(listen_for_http_request(rrc_handle1), listen_for_https_request(rrc_handle2))?;
 
   Ok(())
 }
 
-async fn listen_for_http_request() -> Result<(), io::Error> {
+async fn listen_for_http_request(rrc: Arc<Mutex<u32>>) -> Result<(), io::Error> {
   let listener = TcpListener::bind(LOCAL_HTTP_ADDRESS).await?;
   loop {
     let (stream, _) = listener.accept().await?;
-    tokio::spawn(process_stream(stream));
+    let rrc = rrc.clone();
+    let remote_addr = get_remote_addr(&stream, rrc).await;
+    tokio::spawn(process_stream(stream, remote_addr));
   }
 }
 
-async fn listen_for_https_request() -> Result<(), io::Error> {
+async fn listen_for_https_request(rrc: Arc<Mutex<u32>>) -> Result<(), io::Error> {
   let mut tls_config = ServerConfig::new(NoClientAuth::new());
   let mut cert_resolver = ResolvesServerCertUsingSNI::new();
   add_certificate(
@@ -70,7 +81,8 @@ async fn listen_for_https_request() -> Result<(), io::Error> {
   loop {
     let (stream, _) = listener.accept().await?;
     let tls_acceptor = tls_acceptor.clone();
-    tokio::spawn(process_https_stream(stream, tls_acceptor));
+    let rrc = rrc.clone();
+    tokio::spawn(process_https_stream(stream, tls_acceptor, rrc));
   }
 }
 
@@ -106,15 +118,16 @@ fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
   rsa_private_keys(&mut reader).map_err(|_| io::Error::new(InvalidData, "invalid key"))
 }
 
-async fn process_https_stream(stream: TcpStream, tls_acceptor: TlsAcceptor) -> Result<(), io::Error> {
+async fn process_https_stream(stream: TcpStream, tls_acceptor: TlsAcceptor, rrc: Arc<Mutex<u32>>) -> Result<(), io::Error> {
   let tls_stream = tls_acceptor.accept(stream).await?;
-  process_stream(tls_stream).await
+  let remote_addr = get_remote_addr(tls_stream.get_ref().0, rrc).await;
+  process_stream(tls_stream, remote_addr).await
 }
 
-async fn process_stream<S: AsyncRead + AsyncWrite>(client: S) -> Result<(), io::Error> {
+async fn process_stream<S: AsyncRead + AsyncWrite>(client: S, remote_addr: String) -> Result<(), io::Error> {
   let (mut client_read, mut client_write) = split(client);
 
-  let server = TcpStream::connect(REMOTE_ADDRESS).await?;
+  let server = TcpStream::connect(remote_addr).await?;
   let (mut server_read, mut server_write) = split(server);
 
   try_join!(
@@ -123,6 +136,25 @@ async fn process_stream<S: AsyncRead + AsyncWrite>(client: S) -> Result<(), io::
   )?;
 
   Ok(())
+}
+
+async fn get_remote_addr(tcp_stream : &TcpStream, round_robin_counter: Arc<Mutex<u32>>) -> String {
+  let remote_ip = match LB_MEHOD {
+    "Static Random" => {
+      let mut hasher = DefaultHasher::new();
+      tcp_stream.peer_addr().unwrap().ip().hash(&mut hasher);
+      let ind = (hasher.finish() % REMOTE_ADDRESSES.len() as u64) as usize;
+      REMOTE_ADDRESSES[ind]
+    }
+    "Round Robin" => {
+      let mut rrc = round_robin_counter.lock().unwrap();
+      *rrc = (*rrc+1) % REMOTE_ADDRESSES.len() as u32;
+      REMOTE_ADDRESSES[*rrc as usize]
+    }
+    "Http Host" => { unimplemented!() }
+    _ => "" // assuming we do config validitation somewhere else, this case will never happen
+  };
+  remote_ip.to_string()
 }
 
 async fn pipe_stream<R, W>(mut reader: R, mut writer: W) -> Result<(), io::Error>

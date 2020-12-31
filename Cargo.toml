@@ -14,3 +14,4 @@ tokio-util = { version = "0.6", features = ["full"] }
 log4rs = "1.0"
 log = "0.4"
 tokio-rustls = "0.22"
+rand = "0.8.0"

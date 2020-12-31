@@ -1,9 +1,11 @@
 use bytes::BytesMut;
-use log::trace;
+use log::{error, trace};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::{self, ErrorKind::InvalidData};
 use std::{fs::File, io::BufReader, path::Path, sync::Arc, sync::Mutex};
+use rand::{thread_rng, Rng};
+
 use tokio::{
   io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
   net::{TcpListener, TcpStream},
@@ -24,8 +26,8 @@ const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:3000";
 const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:3001";
 // for now, provide Backend IPs as global fixed sized slice
 static REMOTE_ADDRESSES: [&'static str; 3] = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"];
-// possible choices: IP Hash, Round Robin
-static LB_MEHOD: &str = "IP Hash";
+// possible choices: IP Hash, Round Robin, Random
+static LB_MEHOD: &str = "Random";
 
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {
@@ -138,21 +140,29 @@ async fn process_stream<S: AsyncRead + AsyncWrite>(client: S, remote_addr: Strin
 }
 
 async fn get_remote_addr(tcp_stream: &TcpStream, round_robin_counter: Arc<Mutex<u32>>) -> String {
-  let remote_ip = match LB_MEHOD {
+  let index = match LB_MEHOD {
     "IP Hash" => {
       let mut hasher = DefaultHasher::new();
       tcp_stream.peer_addr().unwrap().ip().hash(&mut hasher);
-      let ind = (hasher.finish() % REMOTE_ADDRESSES.len() as u64) as usize;
-      REMOTE_ADDRESSES[ind]
-    }
+      (hasher.finish() % REMOTE_ADDRESSES.len() as u64) as usize
+    },
     "Round Robin" => {
       let mut rrc = round_robin_counter.lock().unwrap();
       *rrc = (*rrc + 1) % REMOTE_ADDRESSES.len() as u32;
-      REMOTE_ADDRESSES[*rrc as usize]
-    }
-    _ => "", // assuming we do config validitation somewhere else, this case will never happen
+      *rrc as usize
+    },
+    "Random" => {
+      let mut rng = thread_rng();
+      rng.gen_range(0..REMOTE_ADDRESSES.len())
+    },
+    _ => {
+      // assuming we do config validitation somewhere else, this case will never happen
+      error!("No valid load balancing method: {}", LB_MEHOD);
+      0
+    },
   };
-  remote_ip.to_string()
+  trace!{"Using remote server {}", REMOTE_ADDRESSES[index]};
+  REMOTE_ADDRESSES[index].to_string()
 }
 
 async fn pipe_stream<R, W>(mut reader: R, mut writer: W) -> Result<(), io::Error>

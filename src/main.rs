@@ -27,8 +27,8 @@ const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:3000";
 const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:3001";
 // for now, provide Backend IPs as global fixed sized slice
 static REMOTE_ADDRESSES : [&'static str; 3] = ["172.28.1.1:80","172.28.1.2:80","172.28.1.3:80"];
-// possible choices: Static Random, Round Robin, Http Host
-static LB_MEHOD: &str = "Static Random";
+// possible choices: IP Hash, Round Robin
+static LB_MEHOD: &str = "IP Hash";
 
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {
@@ -140,7 +140,7 @@ async fn process_stream<S: AsyncRead + AsyncWrite>(client: S, remote_addr: Strin
 
 async fn get_remote_addr(tcp_stream : &TcpStream, round_robin_counter: Arc<Mutex<u32>>) -> String {
   let remote_ip = match LB_MEHOD {
-    "Static Random" => {
+    "IP Hash" => {
       let mut hasher = DefaultHasher::new();
       tcp_stream.peer_addr().unwrap().ip().hash(&mut hasher);
       let ind = (hasher.finish() % REMOTE_ADDRESSES.len() as u64) as usize;
@@ -151,7 +151,6 @@ async fn get_remote_addr(tcp_stream : &TcpStream, round_robin_counter: Arc<Mutex
       *rrc = (*rrc+1) % REMOTE_ADDRESSES.len() as u32;
       REMOTE_ADDRESSES[*rrc as usize]
     }
-    "Http Host" => { unimplemented!() }
     _ => "" // assuming we do config validitation somewhere else, this case will never happen
   };
   remote_ip.to_string()

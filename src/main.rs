@@ -1,14 +1,9 @@
 use bytes::BytesMut;
-use log::{trace, LevelFilter};
-use log4rs::{
-  append::console::ConsoleAppender,
-  config::{Appender, Root},
-  Config,
-};
-use std::io::{self, ErrorKind::InvalidData};
-use std::{fs::File, io::BufReader, path::Path, sync::Arc, sync::Mutex};
+use log::trace;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::io::{self, ErrorKind::InvalidData};
+use std::{fs::File, io::BufReader, path::Path, sync::Arc, sync::Mutex};
 use tokio::{
   io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
   net::{TcpListener, TcpStream},
@@ -23,27 +18,27 @@ use tokio_rustls::{
   TlsAcceptor,
 };
 
+mod logging;
+
 const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:3000";
 const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:3001";
 // for now, provide Backend IPs as global fixed sized slice
-static REMOTE_ADDRESSES : [&'static str; 3] = ["172.28.1.1:80","172.28.1.2:80","172.28.1.3:80"];
+static REMOTE_ADDRESSES: [&'static str; 3] = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"];
 // possible choices: IP Hash, Round Robin
 static LB_MEHOD: &str = "IP Hash";
 
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {
-  let stdout = ConsoleAppender::builder().build();
-  let config = Config::builder()
-    .appender(Appender::builder().build("stdout", Box::new(stdout)))
-    .build(Root::builder().appender("stdout").build(LevelFilter::Trace))
-    .unwrap();
-  log4rs::init_config(config).expect("Logging should not fail");
+  logging::initialize();
 
-  let round_robin_counter  = Arc::new(Mutex::new(0));
+  let round_robin_counter = Arc::new(Mutex::new(0));
   let rrc_handle1 = round_robin_counter.clone();
   let rrc_handle2 = round_robin_counter.clone();
 
-  try_join!(listen_for_http_request(rrc_handle1), listen_for_https_request(rrc_handle2))?;
+  try_join!(
+    listen_for_http_request(rrc_handle1),
+    listen_for_https_request(rrc_handle2)
+  )?;
 
   Ok(())
 }
@@ -118,7 +113,11 @@ fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
   rsa_private_keys(&mut reader).map_err(|_| io::Error::new(InvalidData, "invalid key"))
 }
 
-async fn process_https_stream(stream: TcpStream, tls_acceptor: TlsAcceptor, rrc: Arc<Mutex<u32>>) -> Result<(), io::Error> {
+async fn process_https_stream(
+  stream: TcpStream,
+  tls_acceptor: TlsAcceptor,
+  rrc: Arc<Mutex<u32>>,
+) -> Result<(), io::Error> {
   let tls_stream = tls_acceptor.accept(stream).await?;
   let remote_addr = get_remote_addr(tls_stream.get_ref().0, rrc).await;
   process_stream(tls_stream, remote_addr).await
@@ -138,7 +137,7 @@ async fn process_stream<S: AsyncRead + AsyncWrite>(client: S, remote_addr: Strin
   Ok(())
 }
 
-async fn get_remote_addr(tcp_stream : &TcpStream, round_robin_counter: Arc<Mutex<u32>>) -> String {
+async fn get_remote_addr(tcp_stream: &TcpStream, round_robin_counter: Arc<Mutex<u32>>) -> String {
   let remote_ip = match LB_MEHOD {
     "IP Hash" => {
       let mut hasher = DefaultHasher::new();
@@ -148,10 +147,10 @@ async fn get_remote_addr(tcp_stream : &TcpStream, round_robin_counter: Arc<Mutex
     }
     "Round Robin" => {
       let mut rrc = round_robin_counter.lock().unwrap();
-      *rrc = (*rrc+1) % REMOTE_ADDRESSES.len() as u32;
+      *rrc = (*rrc + 1) % REMOTE_ADDRESSES.len() as u32;
       REMOTE_ADDRESSES[*rrc as usize]
     }
-    _ => "" // assuming we do config validitation somewhere else, this case will never happen
+    _ => "", // assuming we do config validitation somewhere else, this case will never happen
   };
   remote_ip.to_string()
 }

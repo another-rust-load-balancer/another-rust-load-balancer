@@ -1,3 +1,4 @@
+use hyper::Client;
 use lb_strategies::RandomStrategy;
 use listeners::{AcceptorProducer, Https};
 use server::{BackendPool, BackendPoolConfig, SharedData};
@@ -34,12 +35,14 @@ pub async fn main() -> Result<(), io::Error> {
       addresses: vec!["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"],
       config: BackendPoolConfig::HttpConfig {},
       strategy: Arc::new(RandomStrategy::new()),
+      client: Arc::new(Client::new()),
     },
     BackendPool {
       host: "httpbin.localhost",
       addresses: vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
       config: BackendPoolConfig::HttpConfig {},
       strategy: Arc::new(RandomStrategy::new()),
+      client: Arc::new(Client::new()),
     },
     BackendPool {
       host: "https.localhost",
@@ -49,6 +52,7 @@ pub async fn main() -> Result<(), io::Error> {
         private_key_path: "x509/https.localhost.key",
       },
       strategy: Arc::new(RandomStrategy::new()),
+      client: Arc::new(Client::new()),
     },
     BackendPool {
       host: "www.arlb.de",
@@ -58,6 +62,7 @@ pub async fn main() -> Result<(), io::Error> {
         private_key_path: "x509/www.arlb.de.key",
       },
       strategy: Arc::new(RandomStrategy::new()),
+      client: Arc::new(Client::new()),
     },
   ];
   let shared_data = Arc::new(SharedData { backend_pools });

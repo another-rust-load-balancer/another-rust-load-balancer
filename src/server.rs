@@ -9,6 +9,7 @@ use std::{
 
 use futures::future::*;
 use hyper::{
+  client::HttpConnector,
   server::accept::Accept,
   service::{make_service_fn, Service},
   Body, Client, Request, Response, Server, StatusCode, Uri,
@@ -58,6 +59,7 @@ pub struct BackendPool {
   pub addresses: Vec<&'static str>,
   pub strategy: Arc<dyn LBStrategy + Send + Sync>,
   pub config: BackendPoolConfig,
+  pub client: Arc<Client<HttpConnector, Body>>,
 }
 
 impl BackendPool {
@@ -154,11 +156,11 @@ impl Service<Request<Body>> for LoadBalanceService {
           .body(client_request.into_body())
           .unwrap();
 
-        let fut = async {
-          let resp = Client::new().request(backend_request).await?;
+        let client = pool.client.clone();
+        Box::pin(async move {
+          let resp = client.request(backend_request).await?;
           Ok(resp)
-        };
-        Box::pin(fut)
+        })
       }
     }
   }

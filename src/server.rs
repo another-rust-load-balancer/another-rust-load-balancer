@@ -1,6 +1,5 @@
 use std::{
   io,
-  net::SocketAddr,
   pin::Pin,
   str,
   sync::Arc,
@@ -9,7 +8,7 @@ use std::{
 
 use futures::future::*;
 use hyper::{
-  server::{accept::Accept, conn::AddrStream},
+  server::accept::Accept,
   service::{make_service_fn, Service},
   Body, Client, Request, Response, Server, StatusCode, Uri,
 };

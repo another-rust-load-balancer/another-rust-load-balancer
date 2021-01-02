@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use log::error;
 use std::{
   io,
+  net::SocketAddr,
   pin::Pin,
   sync::Arc,
   task::{Context, Poll},
@@ -86,5 +87,22 @@ impl AcceptorProducer<TlsStream<TcpStream>> for Https {
     Ok(HyperAcceptor {
       acceptor: Box::pin(incoming_stream),
     })
+  }
+}
+
+pub trait RemoteAddress {
+  fn remote_addr(&self) -> io::Result<SocketAddr>;
+}
+
+impl RemoteAddress for TcpStream {
+  fn remote_addr(&self) -> io::Result<SocketAddr> {
+    self.peer_addr()
+  }
+}
+
+impl RemoteAddress for TlsStream<TcpStream> {
+  fn remote_addr(&self) -> io::Result<SocketAddr> {
+    let (stream, _) = self.get_ref();
+    stream.peer_addr()
   }
 }

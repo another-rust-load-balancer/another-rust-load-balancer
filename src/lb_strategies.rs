@@ -1,8 +1,9 @@
+use std::net::SocketAddr;
+
 use rand::{thread_rng, Rng};
 
-// TODO stream: &AddrStream is missing from the arguments
 pub trait LBStrategy {
-  fn resolve_address_index(&self, address_count: usize) -> usize;
+  fn resolve_address_index(&self, address_count: usize, remote_addr: &SocketAddr) -> usize;
 }
 // TODO Add more strategies (IP-Hash, Round-Robbin)
 pub struct RandomStrategy {
@@ -18,7 +19,7 @@ impl RandomStrategy {
 }
 
 impl LBStrategy for RandomStrategy {
-  fn resolve_address_index(&self, address_count: usize) -> usize {
+  fn resolve_address_index(&self, address_count: usize, _remote_addr: &SocketAddr) -> usize {
     let mut rng = thread_rng();
     rng.gen_range(0..address_count)
   }

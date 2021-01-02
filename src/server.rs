@@ -1,5 +1,6 @@
 use std::{
   io,
+  net::SocketAddr,
   pin::Pin,
   str,
   sync::Arc,
@@ -15,23 +16,21 @@ use hyper::{
 use log::debug;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::lb_strategies::LBStrategy;
+use crate::{lb_strategies::LBStrategy, listeners::RemoteAddress};
 
 pub async fn create<'a, I, IE, IO>(acceptor: I, shared_data: Arc<SharedData>, https: bool) -> Result<(), io::Error>
 where
   I: Accept<Conn = IO, Error = IE>,
   IE: Into<Box<dyn std::error::Error + Send + Sync>>,
-  IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+  IO: AsyncRead + AsyncWrite + Unpin + Send + RemoteAddress + 'static,
 {
-  let service = make_service_fn(move |_| {
-    // let remote_addr = Arc::new(stream.remote_addr());
-    // let remote_addr = remote_addr.clone();
-
+  let service = make_service_fn(move |stream: &IO| {
     let shared_data = shared_data.clone();
+    let remote_addr = stream.remote_addr().expect("No remote SocketAddr");
 
     async move {
       Ok::<_, io::Error>(LoadBalanceService {
-        // remote_addr,
+        remote_addr,
         shared_data,
         https,
       })
@@ -62,8 +61,8 @@ pub struct BackendPool {
 }
 
 impl BackendPool {
-  pub fn get_address(&self) -> &str {
-    let index = self.strategy.resolve_address_index(self.addresses.len());
+  pub fn get_address(&self, remote_addr: &SocketAddr) -> &str {
+    let index = self.strategy.resolve_address_index(self.addresses.len(), remote_addr);
     return self.addresses[index];
   }
 }
@@ -74,7 +73,7 @@ pub struct SharedData {
 
 pub struct LoadBalanceService {
   https: bool,
-  // remote_addr: Arc<SocketAddr>,
+  remote_addr: SocketAddr,
   shared_data: Arc<SharedData>,
 }
 
@@ -139,7 +138,7 @@ impl Service<Request<Body>> for LoadBalanceService {
         let uri = Uri::builder()
           .path_and_query(path)
           .scheme("http")
-          .authority(pool.get_address())
+          .authority(pool.get_address(&self.remote_addr))
           .build()
           .unwrap();
 
@@ -151,6 +150,7 @@ impl Service<Request<Body>> for LoadBalanceService {
           .fold(backend_req_builder, |backend_req_builder, (key, val)| {
             backend_req_builder.header(key, val)
           })
+          .header("x-forwarded-for", self.remote_addr.ip().to_string())
           .body(client_request.into_body())
           .unwrap();
 

@@ -1,86 +1,106 @@
-use bytes::BytesMut;
-use log::{error, trace};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use lb_strategies::RandomStrategy;
+use listeners::{AcceptorProducer, Https};
+use server::{BackendPool, BackendPoolConfig, SharedData};
+
 use std::io::{self, ErrorKind::InvalidData};
-use std::{fs::File, io::BufReader, path::Path, sync::Arc, sync::Mutex};
-use rand::{thread_rng, Rng};
-
-use tokio::{
-  io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-  net::{TcpListener, TcpStream},
-  try_join,
-};
-use tokio_rustls::{
-  rustls::{
-    internal::pemfile::{certs, rsa_private_keys},
-    sign::{CertifiedKey, RSASigningKey},
-    Certificate, NoClientAuth, PrivateKey, ResolvesServerCertUsingSNI, ServerConfig,
-  },
-  TlsAcceptor,
+use std::vec;
+use std::{fs::File, io::BufReader, path::Path, sync::Arc};
+use tokio::try_join;
+use tokio_rustls::rustls::{
+  internal::pemfile::{certs, rsa_private_keys},
+  sign::{CertifiedKey, RSASigningKey},
+  Certificate, NoClientAuth, PrivateKey, ResolvesServerCertUsingSNI, ServerConfig,
 };
 
+mod lb_strategies;
+mod listeners;
 mod logging;
+mod server;
 
-const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:3000";
-const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:3001";
-// for now, provide Backend IPs as global fixed sized slice
-static REMOTE_ADDRESSES: [&'static str; 3] = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"];
-// possible choices: IP Hash, Round Robin, Random
-static LB_MEHOD: &str = "Random";
+const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:80";
+const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:443";
 
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {
   logging::initialize();
 
-  let round_robin_counter = Arc::new(Mutex::new(0));
-  let rrc_handle1 = round_robin_counter.clone();
-  let rrc_handle2 = round_robin_counter.clone();
+  // let round_robin_counter = Arc::new(Mutex::new(0));
+  // let rrc_handle1 = round_robin_counter.clone();
+  // let rrc_handle2 = round_robin_counter.clone();
+
+  let backend_pools = vec![
+    BackendPool {
+      host: "whoami.localhost",
+      addresses: vec!["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"],
+      config: BackendPoolConfig::HttpConfig {},
+      strategy: Arc::new(RandomStrategy::new()),
+    },
+    BackendPool {
+      host: "httpbin.localhost",
+      addresses: vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
+      config: BackendPoolConfig::HttpConfig {},
+      strategy: Arc::new(RandomStrategy::new()),
+    },
+    BackendPool {
+      host: "https.localhost",
+      addresses: vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
+      config: BackendPoolConfig::HttpsConfig {
+        certificate_path: "x509/https.localhost.cer",
+        private_key_path: "x509/https.localhost.key",
+      },
+      strategy: Arc::new(RandomStrategy::new()),
+    },
+    BackendPool {
+      host: "www.arlb.de",
+      addresses: vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
+      config: BackendPoolConfig::HttpsConfig {
+        certificate_path: "x509/www.arlb.de.cer",
+        private_key_path: "x509/www.arlb.de.key",
+      },
+      strategy: Arc::new(RandomStrategy::new()),
+    },
+  ];
+  let shared_data = Arc::new(SharedData { backend_pools });
 
   try_join!(
-    listen_for_http_request(rrc_handle1),
-    listen_for_https_request(rrc_handle2)
+    listen_for_http_request(shared_data.clone()),
+    listen_for_https_request(shared_data.clone())
   )?;
 
   Ok(())
 }
 
-async fn listen_for_http_request(rrc: Arc<Mutex<u32>>) -> Result<(), io::Error> {
-  let listener = TcpListener::bind(LOCAL_HTTP_ADDRESS).await?;
-  loop {
-    let (stream, _) = listener.accept().await?;
-    let rrc = rrc.clone();
-    let remote_addr = get_remote_addr(&stream, rrc).await;
-    tokio::spawn(process_stream(stream, remote_addr));
-  }
+async fn listen_for_http_request(shared_data: Arc<SharedData>) -> Result<(), io::Error> {
+  let http = listeners::Http {};
+  let acceptor = http.produce_acceptor(LOCAL_HTTP_ADDRESS).await?;
+
+  server::create(acceptor, shared_data, false).await
 }
 
-async fn listen_for_https_request(rrc: Arc<Mutex<u32>>) -> Result<(), io::Error> {
+async fn listen_for_https_request(shared_data: Arc<SharedData>) -> Result<(), io::Error> {
   let mut tls_config = ServerConfig::new(NoClientAuth::new());
   let mut cert_resolver = ResolvesServerCertUsingSNI::new();
-  add_certificate(
-    &mut cert_resolver,
-    "localhost",
-    Path::new("x509/localhost.cer"),
-    Path::new("x509/localhost.key"),
-  )?;
-  add_certificate(
-    &mut cert_resolver,
-    "www.arlb.de",
-    Path::new("x509/www.arlb.de.cer"),
-    Path::new("x509/www.arlb.de.key"),
-  )?;
-  tls_config.cert_resolver = Arc::new(cert_resolver);
-  let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
 
-  let listener = TcpListener::bind(LOCAL_HTTPS_ADDRESS).await?;
-
-  loop {
-    let (stream, _) = listener.accept().await?;
-    let tls_acceptor = tls_acceptor.clone();
-    let rrc = rrc.clone();
-    tokio::spawn(process_https_stream(stream, tls_acceptor, rrc));
+  for pool in &shared_data.backend_pools {
+    match pool.config {
+      BackendPoolConfig::HttpsConfig {
+        certificate_path,
+        private_key_path,
+      } => add_certificate(
+        &mut cert_resolver,
+        pool.host,
+        Path::new(certificate_path),
+        Path::new(private_key_path),
+      ),
+      _ => Ok(()),
+    }?
   }
+  tls_config.cert_resolver = Arc::new(cert_resolver);
+
+  let https = Https { tls_config };
+  let acceptor = https.produce_acceptor(LOCAL_HTTPS_ADDRESS).await?;
+
+  server::create(acceptor, shared_data, true).await
 }
 
 fn add_certificate(
@@ -113,74 +133,4 @@ fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
   let file = File::open(path)?;
   let mut reader = BufReader::new(file);
   rsa_private_keys(&mut reader).map_err(|_| io::Error::new(InvalidData, "invalid key"))
-}
-
-async fn process_https_stream(
-  stream: TcpStream,
-  tls_acceptor: TlsAcceptor,
-  rrc: Arc<Mutex<u32>>,
-) -> Result<(), io::Error> {
-  let tls_stream = tls_acceptor.accept(stream).await?;
-  let remote_addr = get_remote_addr(tls_stream.get_ref().0, rrc).await;
-  process_stream(tls_stream, remote_addr).await
-}
-
-async fn process_stream<S: AsyncRead + AsyncWrite>(client: S, remote_addr: String) -> Result<(), io::Error> {
-  let (mut client_read, mut client_write) = split(client);
-
-  let server = TcpStream::connect(remote_addr).await?;
-  let (mut server_read, mut server_write) = split(server);
-
-  try_join!(
-    pipe_stream(&mut client_read, &mut server_write),
-    pipe_stream(&mut server_read, &mut client_write)
-  )?;
-
-  Ok(())
-}
-
-async fn get_remote_addr(tcp_stream: &TcpStream, round_robin_counter: Arc<Mutex<u32>>) -> String {
-  let index = match LB_MEHOD {
-    "IP Hash" => {
-      let mut hasher = DefaultHasher::new();
-      tcp_stream.peer_addr().unwrap().ip().hash(&mut hasher);
-      (hasher.finish() % REMOTE_ADDRESSES.len() as u64) as usize
-    },
-    "Round Robin" => {
-      let mut rrc = round_robin_counter.lock().unwrap();
-      *rrc = (*rrc + 1) % REMOTE_ADDRESSES.len() as u32;
-      *rrc as usize
-    },
-    "Random" => {
-      let mut rng = thread_rng();
-      rng.gen_range(0..REMOTE_ADDRESSES.len())
-    },
-    _ => {
-      // assuming we do config validitation somewhere else, this case will never happen
-      error!("No valid load balancing method: {}", LB_MEHOD);
-      0
-    },
-  };
-  trace!{"Using remote server {}", REMOTE_ADDRESSES[index]};
-  REMOTE_ADDRESSES[index].to_string()
-}
-
-async fn pipe_stream<R, W>(mut reader: R, mut writer: W) -> Result<(), io::Error>
-where
-  R: AsyncReadExt + Unpin,
-  W: AsyncWriteExt + Unpin,
-{
-  let mut buffer = BytesMut::with_capacity(4 << 10); // 4096
-
-  loop {
-    match reader.read_buf(&mut buffer).await? {
-      n if n == 0 => {
-        break writer.shutdown().await;
-      }
-      _ => {
-        trace!("PIPE: {}", std::string::String::from_utf8_lossy(&buffer[..]));
-        writer.write_buf(&mut buffer).await?;
-      }
-    }
-  }
 }

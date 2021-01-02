@@ -10,8 +10,13 @@ edition = "2018"
 tokio = {version = "1.0", features = ["full"] }
 bytes = "1.0"
 tokio-util = { version = "0.6", features = ["full"] }
-# futures = "0.3"
+futures = "0.3"
 log4rs = "1.0"
 log = "0.4"
 tokio-rustls = "0.22"
-rand = "0.8.0"
+hyper = { version = "0.14", features = ["client", "server", "http1", "http2"] }
+hyper-rustls = "0.22"
+async-stream = "0.3"
+futures-util = "0.3"
+async-trait = "0.1"
+rand = "0.8"

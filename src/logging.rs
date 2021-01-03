@@ -2,14 +2,18 @@ use log::{info, LevelFilter};
 use log4rs::{
   append::console::ConsoleAppender,
   config::{Appender, Root},
+  encode::pattern,
   Config,
 };
+use pattern::PatternEncoder;
 
 pub fn initialize() -> log4rs::Handle {
   let log_level = std::env::var("LOG_LEVEL").unwrap_or("DEBUG".into());
   let level_filter = parse_level_filter(&log_level).expect(&format!("Invalid log level: {}", &log_level));
 
-  let stdout = ConsoleAppender::builder().build();
+  let pattern = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S%.9f)} {({l}):5} {t} - {m}{n}");
+
+  let stdout = ConsoleAppender::builder().encoder(Box::new(pattern)).build();
   let config = Config::builder()
     .appender(Appender::builder().build("stdout", Box::new(stdout)))
     .build(Root::builder().appender("stdout").build(level_filter))

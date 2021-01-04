@@ -2,10 +2,11 @@ use std::net::SocketAddr;
 
 use rand::{thread_rng, Rng};
 
-pub trait LBStrategy {
+pub trait LBStrategy: std::fmt::Debug {
   fn resolve_address_index(&self, address_count: usize, remote_addr: &SocketAddr) -> usize;
 }
-// TODO Add more strategies (IP-Hash, Round-Robbin)
+
+#[derive(Debug)]
 pub struct RandomStrategy {
   // TODO save rng for all calls -> rng: ThreadRng,
 }

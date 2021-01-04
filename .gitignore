@@ -1,2 +1,4 @@
 /target
 x509
+benchmarks/*
+!benchmarks/traefik.toml

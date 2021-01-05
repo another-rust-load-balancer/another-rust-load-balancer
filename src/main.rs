@@ -1,5 +1,5 @@
 use hyper::Client;
-use lb_strategies::RandomStrategy;
+use lb_strategies::{RandomStrategy, IPHashStrategy, RoundRobinStrategy};
 use listeners::{AcceptorProducer, Https};
 use server::{BackendPool, BackendPoolConfig, SharedData};
 
@@ -34,7 +34,7 @@ pub async fn main() -> Result<(), io::Error> {
       host: "whoami.localhost",
       addresses: vec!["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"],
       config: BackendPoolConfig::HttpConfig {},
-      strategy: Box::new(RandomStrategy::new()),
+      strategy: Box::new(RoundRobinStrategy::new()),
       client: Arc::new(Client::new()),
     },
     BackendPool {
@@ -51,7 +51,7 @@ pub async fn main() -> Result<(), io::Error> {
         certificate_path: "x509/https.localhost.cer",
         private_key_path: "x509/https.localhost.key",
       },
-      strategy: Box::new(RandomStrategy::new()),
+      strategy: Box::new(IPHashStrategy::new()),
       client: Arc::new(Client::new()),
     },
     BackendPool {

@@ -17,7 +17,10 @@ use hyper::{
 use log::debug;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::{lb_strategies::LBStrategy, listeners::RemoteAddress};
+use crate::{
+  lb_strategies::{LBContext, LBStrategy},
+  listeners::RemoteAddress,
+};
 
 pub async fn create<'a, I, IE, IO>(acceptor: I, shared_data: Arc<SharedData>, https: bool) -> Result<(), io::Error>
 where
@@ -71,8 +74,27 @@ impl PartialEq for BackendPool {
 }
 
 impl BackendPool {
-  pub fn get_address(&self, remote_addr: &SocketAddr) -> &str {
-    let index = self.strategy.resolve_address_index(self.addresses.len(), remote_addr);
+  pub fn new(
+    host: &'static str,
+    addresses: Vec<&'static str>,
+    strategy: Box<dyn LBStrategy + Send + Sync>,
+    config: BackendPoolConfig,
+  ) -> BackendPool {
+    BackendPool {
+      host,
+      addresses,
+      config,
+      strategy,
+      client: Arc::new(Client::new()),
+    }
+  }
+
+  pub fn get_address(&self, remote_addr: &SocketAddr, client_request: &Request<Body>) -> &str {
+    let index = self.strategy.resolve_address_index(&LBContext {
+      client_request,
+      remote_addr,
+      pool: &self,
+    });
     return self.addresses[index];
   }
 }
@@ -113,18 +135,18 @@ impl LoadBalanceService {
     }
   }
 
-  fn backend_uri<T>(&self, pool: &BackendPool, client_request: &Request<T>) -> Uri {
+  fn backend_uri(&self, pool: &BackendPool, client_request: &Request<Body>) -> Uri {
     let path = client_request.uri().path_and_query().unwrap().clone();
 
     Uri::builder()
       .path_and_query(path)
       .scheme("http")
-      .authority(pool.get_address(&self.remote_addr))
+      .authority(pool.get_address(&self.remote_addr, &client_request))
       .build()
       .unwrap()
   }
 
-  fn backend_request<T>(&self, pool: &BackendPool, client_request: Request<T>) -> Request<T> {
+  fn backend_request(&self, pool: &BackendPool, client_request: Request<Body>) -> Request<Body> {
     let backend_req_builder = Request::builder().uri(self.backend_uri(pool, &client_request));
 
     client_request
@@ -241,7 +263,7 @@ mod tests {
     let request = Request::builder()
       .uri("https://www.rust-lang.org/path?param=yolo")
       .header("host", "whoami.localhost")
-      .body(())
+      .body(Body::empty())
       .unwrap();
 
     let backend_uri = service.backend_uri(pool, &request);

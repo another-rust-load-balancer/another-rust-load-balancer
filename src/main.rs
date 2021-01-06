@@ -1,5 +1,4 @@
-use hyper::Client;
-use lb_strategies::{RandomStrategy, IPHashStrategy, RoundRobinStrategy};
+use lb_strategies::{IPHashStrategy, RandomStrategy, RoundRobinStrategy};
 use listeners::{AcceptorProducer, Https};
 use server::{BackendPool, BackendPoolConfig, SharedData};
 
@@ -7,7 +6,7 @@ use std::io;
 use std::vec;
 use std::{path::Path, sync::Arc};
 use tokio::try_join;
-use tokio_rustls::rustls::{NoClientAuth,  ResolvesServerCertUsingSNI, ServerConfig};
+use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
 
 mod lb_strategies;
 mod listeners;
@@ -27,40 +26,36 @@ pub async fn main() -> Result<(), io::Error> {
   // let rrc_handle2 = round_robin_counter.clone();
 
   let backend_pools = vec![
-    BackendPool {
-      host: "whoami.localhost",
-      addresses: vec!["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"],
-      config: BackendPoolConfig::HttpConfig {},
-      strategy: Box::new(RoundRobinStrategy::new()),
-      client: Arc::new(Client::new()),
-    },
-    BackendPool {
-      host: "httpbin.localhost",
-      addresses: vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
-      config: BackendPoolConfig::HttpConfig {},
-      strategy: Box::new(RandomStrategy::new()),
-      client: Arc::new(Client::new()),
-    },
-    BackendPool {
-      host: "https.localhost",
-      addresses: vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
-      config: BackendPoolConfig::HttpsConfig {
+    BackendPool::new(
+      "whoami.localhost",
+      vec!["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"],
+      Box::new(RoundRobinStrategy::new()),
+      BackendPoolConfig::HttpConfig {},
+    ),
+    BackendPool::new(
+      "httpbin.localhost",
+      vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
+      Box::new(RandomStrategy::new()),
+      BackendPoolConfig::HttpConfig {},
+    ),
+    BackendPool::new(
+      "https.localhost",
+      vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
+      Box::new(IPHashStrategy::new()),
+      BackendPoolConfig::HttpsConfig {
         certificate_path: "x509/https.localhost.cer",
         private_key_path: "x509/https.localhost.key",
       },
-      strategy: Box::new(IPHashStrategy::new()),
-      client: Arc::new(Client::new()),
-    },
-    BackendPool {
-      host: "www.arlb.de",
-      addresses: vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
-      config: BackendPoolConfig::HttpsConfig {
+    ),
+    BackendPool::new(
+      "www.arlb.de",
+      vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
+      Box::new(RandomStrategy::new()),
+      BackendPoolConfig::HttpsConfig {
         certificate_path: "x509/www.arlb.de.cer",
         private_key_path: "x509/www.arlb.de.key",
       },
-      strategy: Box::new(RandomStrategy::new()),
-      client: Arc::new(Client::new()),
-    },
+    ),
   ];
   let shared_data = Arc::new(SharedData { backend_pools });
 

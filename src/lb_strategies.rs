@@ -47,13 +47,6 @@ impl LBStrategy for IPHashStrategy {
     // finish() does not reset state, so we'll need a new hasher for each request
     let mut hasher = DefaultHasher::new();
     lb_context.remote_addr.ip().hash(&mut hasher);
-    println!(
-      "{} {} {}",
-      hasher.finish(),
-      lb_context.pool.addresses.len(),
-      hasher.finish() % (lb_context.pool.addresses.len() as u64)
-    );
-
     (hasher.finish() % (lb_context.pool.addresses.len() as u64)) as usize
   }
 }

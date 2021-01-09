@@ -1,3 +1,16 @@
+use crate::{
+  lb_strategies::{LBContext, LBStrategy},
+  listeners::RemoteAddress,
+};
+use async_trait::async_trait;
+use futures::future::*;
+use hyper::{
+  client::HttpConnector,
+  server::accept::Accept,
+  service::{make_service_fn, Service},
+  Body, Client, Request, Response, Server, StatusCode, Uri,
+};
+use log::{debug, error, trace};
 use std::{
   io,
   net::SocketAddr,
@@ -6,21 +19,7 @@ use std::{
   sync::Arc,
   task::{Context, Poll},
 };
-
-use futures::future::*;
-use hyper::{
-  client::HttpConnector,
-  server::accept::Accept,
-  service::{make_service_fn, Service},
-  Body, Client, Request, Response, Server, StatusCode, Uri,
-};
-use log::debug;
 use tokio::io::{AsyncRead, AsyncWrite};
-
-use crate::{
-  lb_strategies::{LBContext, LBStrategy},
-  listeners::RemoteAddress,
-};
 
 pub async fn create<'a, I, IE, IO>(acceptor: I, shared_data: Arc<SharedData>, https: bool) -> Result<(), io::Error>
 where
@@ -116,6 +115,13 @@ fn not_found() -> Response<Body> {
     .unwrap()
 }
 
+fn bad_gateway() -> Response<Body> {
+  Response::builder()
+    .status(StatusCode::BAD_GATEWAY)
+    .body(Body::empty())
+    .unwrap()
+}
+
 impl LoadBalanceService {
   fn pool_by_req<T>(&self, client_request: &Request<T>) -> Option<&BackendPool> {
     let host_header = client_request.headers().get("host")?;
@@ -145,20 +151,92 @@ impl LoadBalanceService {
       .build()
       .unwrap()
   }
+}
 
-  fn backend_request(&self, pool: &BackendPool, client_request: Request<Body>) -> Request<Body> {
-    let backend_req_builder = Request::builder().uri(self.backend_uri(pool, &client_request));
+struct RequestHandlerContext {
+  remote_addr: SocketAddr,
+  backend_uri: Uri,
+  client: Arc<Client<HttpConnector, Body>>,
+}
 
-    client_request
-      .headers()
-      .iter()
-      .fold(backend_req_builder, |backend_req_builder, (key, val)| {
-        backend_req_builder.header(key, val)
-      })
-      .header("x-forwarded-for", self.remote_addr.ip().to_string())
-      .method(client_request.method())
-      .body(client_request.into_body())
-      .unwrap()
+enum RequestHandlerChain {
+  Empty,
+  Entry {
+    handler: Box<dyn RequestHandler>,
+    next: Box<RequestHandlerChain>,
+  },
+}
+
+impl RequestHandlerChain {
+  async fn handle_request(
+    &self,
+    request: Request<Body>,
+    context: &RequestHandlerContext,
+  ) -> Result<Response<Body>, Response<Body>> {
+    match self {
+      RequestHandlerChain::Entry { handler, next } => handler.handle_request(request, &next, &context).await,
+      RequestHandlerChain::Empty => {
+        let backend_request = backend_request(&context.remote_addr, &context.backend_uri, request);
+        context.client.request(backend_request).await.map_err(|error| {
+          error!("{}", error);
+          bad_gateway()
+        })
+      }
+    }
+  }
+}
+
+fn backend_request(remote_addr: &SocketAddr, backend_uri: &Uri, client_request: Request<Body>) -> Request<Body> {
+  let backend_req_builder = Request::builder().uri(backend_uri);
+
+  client_request
+    .headers()
+    .iter()
+    .fold(backend_req_builder, |backend_req_builder, (key, val)| {
+      backend_req_builder.header(key, val)
+    })
+    .header("x-forwarded-for", remote_addr.ip().to_string())
+    .method(client_request.method())
+    .body(client_request.into_body())
+    .unwrap()
+}
+
+#[async_trait]
+trait RequestHandler: Send + Sync {
+  fn modify_client_request(&self, client_request: Request<Body>) -> Result<Request<Body>, Response<Body>> {
+    Ok(client_request)
+  }
+
+  fn modify_response(&self, response: Response<Body>) -> Response<Body> {
+    response
+  }
+
+  async fn handle_request(
+    &self,
+    request: Request<Body>,
+    next: &RequestHandlerChain,
+    context: &RequestHandlerContext,
+  ) -> Result<Response<Body>, Response<Body>> {
+    match self.modify_client_request(request) {
+      Ok(request) => next
+        .handle_request(request, context)
+        .await
+        .map(|re| self.modify_response(re)),
+      Err(response) => Err(response),
+    }
+  }
+}
+
+struct GZipCompression {}
+
+impl RequestHandler for GZipCompression {
+  fn modify_response(&self, response: Response<Body>) -> Response<Body> {
+    trace!("Hello");
+    response
+    //   GzDecoder::new(res)
+    // let mut body = client_request.into_body();
+    // let mapping = body.map_ok(|chunk| chunk.iter().map(|byte| byte.to_ascii_uppercase()).collect::<Vec<u8>>());
+    // *backend_request.body_mut() = Body::wrap_stream(mapping);
   }
 }
 
@@ -178,15 +256,22 @@ impl Service<Request<Body>> for LoadBalanceService {
       client_request.method(),
       client_request.uri()
     );
-
     match self.pool_by_req(&client_request) {
       Some(pool) if self.matches_pool_config(&pool.config) => {
-        let backend_request = self.backend_request(pool, client_request);
-
-        let client = pool.client.clone();
+        let context = RequestHandlerContext {
+          remote_addr: self.remote_addr.clone(),
+          backend_uri: self.backend_uri(pool, &client_request),
+          client: pool.client.clone(),
+        };
+        let chain = RequestHandlerChain::Entry {
+          handler: Box::new(GZipCompression {}),
+          next: Box::new(RequestHandlerChain::Empty),
+        };
         Box::pin(async move {
-          let resp = client.request(backend_request).await?;
-          Ok(resp)
+          match chain.handle_request(client_request, &context).await {
+            Ok(response) => Ok(response),
+            Err(response) => Ok(response),
+          }
         })
       }
       _ => Box::pin(async { Ok(not_found()) }),

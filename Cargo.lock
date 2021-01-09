@@ -19,10 +19,10 @@ dependencies = [
 name = "another-rust-load-balancer"
 version = "0.1.0"
 dependencies = [
+ "async-compression",
  "async-stream",
  "async-trait",
- "bytes 1.0.0",
- "flate2",
+ "bytes 0.5.6",
  "futures",
  "futures-util",
  "hyper",
@@ -46,6 +46,19 @@ name = "arc-swap"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dabe5a181f83789739c194cbe5a897dde195078fac08568d09221fd6137a7ba8"
+
+[[package]]
+name = "async-compression"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b72c1f1154e234325b50864a349b9c8e56939e266a4c307c0f159812df2f9537"
+dependencies = [
+ "bytes 0.5.6",
+ "flate2",
+ "futures-core",
+ "memchr",
+ "pin-project-lite",
+]
 
 [[package]]
 name = "async-stream"

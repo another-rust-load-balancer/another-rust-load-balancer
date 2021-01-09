@@ -1,20 +1,19 @@
 use crate::{
   lb_strategies::{LBContext, LBStrategy},
   listeners::RemoteAddress,
+  middleware::{RequestHandlerChain, RequestHandlerContext},
 };
-use async_compression::stream::GzipEncoder;
-use async_trait::async_trait;
-use futures::{future::*, *};
+use futures::Future;
+use futures::TryFutureExt;
 use hyper::{
   client::HttpConnector,
-  header::HeaderValue,
   server::accept::Accept,
   service::{make_service_fn, Service},
   Body, Client, Request, Response, Server, StatusCode, Uri,
 };
-use log::{debug, error};
+use log::debug;
 use std::{
-  io::{self, ErrorKind},
+  io,
   net::SocketAddr,
   pin::Pin,
   str,
@@ -35,7 +34,7 @@ where
 
     async move {
       Ok::<_, io::Error>(LoadBalanceService {
-        remote_addr,
+        client_address: remote_addr,
         shared_data,
         request_https: https,
       })
@@ -93,10 +92,10 @@ impl BackendPool {
     }
   }
 
-  pub fn get_address(&self, remote_addr: &SocketAddr, client_request: &Request<Body>) -> &str {
+  pub fn get_address(&self, client_address: &SocketAddr, client_request: &Request<Body>) -> &str {
     let index = self.strategy.resolve_address_index(&LBContext {
       client_request,
-      remote_addr,
+      client_address,
       pool: &self,
     });
     return self.addresses[index];
@@ -109,7 +108,7 @@ pub struct SharedData {
 
 pub struct LoadBalanceService {
   request_https: bool,
-  remote_addr: SocketAddr,
+  client_address: SocketAddr,
   shared_data: Arc<SharedData>,
 }
 
@@ -120,7 +119,7 @@ fn not_found() -> Response<Body> {
     .unwrap()
 }
 
-fn bad_gateway() -> Response<Body> {
+pub fn bad_gateway() -> Response<Body> {
   Response::builder()
     .status(StatusCode::BAD_GATEWAY)
     .body(Body::empty())
@@ -152,125 +151,9 @@ impl LoadBalanceService {
     Uri::builder()
       .path_and_query(path)
       .scheme("http")
-      .authority(pool.get_address(&self.remote_addr, &client_request))
+      .authority(pool.get_address(&self.client_address, &client_request))
       .build()
       .unwrap()
-  }
-}
-
-pub struct RequestHandlerContext {
-  remote_addr: SocketAddr,
-  backend_uri: Uri,
-  client: Arc<Client<HttpConnector, Body>>,
-}
-
-#[derive(Debug)]
-pub enum RequestHandlerChain {
-  Empty,
-  Entry {
-    handler: Box<dyn RequestHandler>,
-    next: Box<RequestHandlerChain>,
-  },
-}
-
-impl RequestHandlerChain {
-  async fn handle_request(
-    &self,
-    request: Request<Body>,
-    context: &RequestHandlerContext,
-  ) -> Result<Response<Body>, Response<Body>> {
-    match self {
-      RequestHandlerChain::Entry { handler, next } => handler.handle_request(request, &next, &context).await,
-      RequestHandlerChain::Empty => {
-        let backend_request = backend_request(&context.remote_addr, &context.backend_uri, request);
-        context.client.request(backend_request).await.map_err(|error| {
-          error!("{}", error);
-          bad_gateway()
-        })
-      }
-    }
-  }
-}
-
-fn backend_request(remote_addr: &SocketAddr, backend_uri: &Uri, client_request: Request<Body>) -> Request<Body> {
-  let backend_req_builder = Request::builder().uri(backend_uri);
-
-  client_request
-    .headers()
-    .iter()
-    .fold(backend_req_builder, |backend_req_builder, (key, val)| {
-      backend_req_builder.header(key, val)
-    })
-    .header("x-forwarded-for", remote_addr.ip().to_string())
-    .method(client_request.method())
-    .body(client_request.into_body())
-    .unwrap()
-}
-
-#[async_trait]
-pub trait RequestHandler: Send + Sync + std::fmt::Debug {
-  async fn handle_request(
-    &self,
-    request: Request<Body>,
-    next: &RequestHandlerChain,
-    context: &RequestHandlerContext,
-  ) -> Result<Response<Body>, Response<Body>> {
-    match self.modify_client_request(request) {
-      Ok(request) => next
-        .handle_request(request, context)
-        .await
-        .map(|re| self.modify_response(re)),
-      Err(response) => Err(response),
-    }
-  }
-
-  fn modify_client_request(&self, client_request: Request<Body>) -> Result<Request<Body>, Response<Body>> {
-    Ok(client_request)
-  }
-
-  fn modify_response(&self, response: Response<Body>) -> Response<Body> {
-    response
-  }
-}
-
-#[derive(Debug)]
-pub struct GzipCompression {}
-
-#[async_trait]
-impl RequestHandler for GzipCompression {
-  async fn handle_request(
-    &self,
-    request: Request<Body>,
-    next: &RequestHandlerChain,
-    context: &RequestHandlerContext,
-  ) -> Result<Response<Body>, Response<Body>> {
-    let header = request.headers().get("Accept-Encoding");
-    let compress = header.map_or(false, |value| {
-      value.to_str().map_or(false, |string| string.contains(&"gzip"))
-    });
-    next.handle_request(request, context).await.map(|response| {
-      if compress {
-        self.modify_response(response)
-      } else {
-        response
-      }
-    })
-  }
-
-  fn modify_response(&self, response: Response<Body>) -> Response<Body> {
-    let (parts, body) = response.into_parts();
-
-    let stream = body
-      .map_ok(|chunk| bytes::Bytes::from(chunk.to_vec()))
-      .map_err(|error| io::Error::new(ErrorKind::Other, error));
-    let compressed_stream = GzipEncoder::new(stream).map_ok(|chunk| hyper::body::Bytes::from(chunk.to_vec()));
-    let body = Body::wrap_stream(compressed_stream);
-
-    let mut response = Response::from_parts(parts, body);
-    let headers = response.headers_mut();
-    headers.insert("Content-Encoding", HeaderValue::from_static("gzip"));
-    headers.remove("Content-Length");
-    response
   }
 }
 
@@ -293,7 +176,7 @@ impl Service<Request<Body>> for LoadBalanceService {
     match self.pool_by_req(&client_request) {
       Some(pool) if self.matches_pool_config(&pool.config) => {
         let context = RequestHandlerContext {
-          remote_addr: self.remote_addr.clone(),
+          client_address: self.client_address.clone(),
           backend_uri: self.backend_uri(pool, &client_request),
           client: pool.client.clone(),
         };
@@ -321,7 +204,7 @@ mod tests {
   fn generate_test_service(host: &'static str, request_https: bool) -> LoadBalanceService {
     LoadBalanceService {
       request_https: request_https,
-      remote_addr: "127.0.0.1:3000".parse().unwrap(),
+      client_address: "127.0.0.1:3000".parse().unwrap(),
       shared_data: Arc::new(SharedData {
         backend_pools: vec![BackendPool::new(
           host,

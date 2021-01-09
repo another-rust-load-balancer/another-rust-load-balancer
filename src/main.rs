@@ -1,7 +1,7 @@
 use lb_strategies::{IPHashStrategy, RandomStrategy, RoundRobinStrategy};
 use listeners::{AcceptorProducer, Https};
-use server::{BackendPool, BackendPoolConfig, GzipCompression, RequestHandlerChain, SharedData};
-
+use middleware::{Compression, RequestHandlerChain};
+use server::{BackendPool, BackendPoolConfig, SharedData};
 use std::io;
 use std::vec;
 use std::{path::Path, sync::Arc};
@@ -11,6 +11,7 @@ use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfi
 mod lb_strategies;
 mod listeners;
 mod logging;
+mod middleware;
 mod server;
 mod tls;
 
@@ -32,7 +33,7 @@ pub async fn main() -> Result<(), io::Error> {
       Box::new(RoundRobinStrategy::new()),
       BackendPoolConfig::HttpConfig {},
       RequestHandlerChain::Entry {
-        handler: Box::new(GzipCompression {}),
+        handler: Box::new(Compression {}),
         next: Box::new(RequestHandlerChain::Empty),
       },
     ),
@@ -42,7 +43,7 @@ pub async fn main() -> Result<(), io::Error> {
       Box::new(RandomStrategy::new()),
       BackendPoolConfig::HttpConfig {},
       RequestHandlerChain::Entry {
-        handler: Box::new(GzipCompression {}),
+        handler: Box::new(Compression {}),
         next: Box::new(RequestHandlerChain::Empty),
       },
     ),
@@ -55,7 +56,7 @@ pub async fn main() -> Result<(), io::Error> {
         private_key_path: "x509/https.localhost.key",
       },
       RequestHandlerChain::Entry {
-        handler: Box::new(GzipCompression {}),
+        handler: Box::new(Compression {}),
         next: Box::new(RequestHandlerChain::Empty),
       },
     ),
@@ -68,7 +69,7 @@ pub async fn main() -> Result<(), io::Error> {
         private_key_path: "x509/www.arlb.de.key",
       },
       RequestHandlerChain::Entry {
-        handler: Box::new(GzipCompression {}),
+        handler: Box::new(Compression {}),
         next: Box::new(RequestHandlerChain::Empty),
       },
     ),

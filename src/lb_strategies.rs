@@ -9,7 +9,7 @@ use crate::server::BackendPool;
 
 pub struct LBContext<'a> {
   pub pool: &'a BackendPool,
-  pub remote_addr: &'a SocketAddr,
+  pub client_address: &'a SocketAddr,
   pub client_request: &'a Request<Body>,
 }
 
@@ -46,7 +46,7 @@ impl LBStrategy for IPHashStrategy {
   fn resolve_address_index(&self, lb_context: &LBContext) -> usize {
     // finish() does not reset state, so we'll need a new hasher for each request
     let mut hasher = DefaultHasher::new();
-    lb_context.remote_addr.ip().hash(&mut hasher);
+    lb_context.client_address.ip().hash(&mut hasher);
     (hasher.finish() % (lb_context.pool.addresses.len() as u64)) as usize
   }
 }
@@ -102,7 +102,7 @@ impl LBStrategy for StickyCookieStrategy {
 
 #[cfg(test)]
 mod tests {
-  use crate::server::{BackendPoolConfig, RequestHandlerChain};
+  use crate::{middleware::RequestHandlerChain, server::BackendPoolConfig};
 
   use super::*;
 
@@ -110,7 +110,7 @@ mod tests {
   pub fn round_robin_strategy_single_address() {
     let lb_context = LBContext {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
-      remote_addr: &"127.0.0.1:3000".parse().unwrap(),
+      client_address: &"127.0.0.1:3000".parse().unwrap(),
       pool: &BackendPool::new(
         "whoami.localhost",
         vec!["127.0.0.1:1"],
@@ -130,7 +130,7 @@ mod tests {
   pub fn round_robin_strategy_multiple_addresses() {
     let lb_context = LBContext {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
-      remote_addr: &"127.0.0.1:3000".parse().unwrap(),
+      client_address: &"127.0.0.1:3000".parse().unwrap(),
       pool: &BackendPool::new(
         "whoami.localhost",
         vec!["127.0.0.1:1", "127.0.0.1:2"],
@@ -151,7 +151,7 @@ mod tests {
   pub fn ip_hash_strategy_same_ip() {
     let lb_context = LBContext {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
-      remote_addr: &"127.0.0.1:3000".parse().unwrap(),
+      client_address: &"127.0.0.1:3000".parse().unwrap(),
       pool: &BackendPool::new(
         "whoami.localhost",
         vec!["127.0.0.1:1", "127.0.0.1:2"],
@@ -173,7 +173,7 @@ mod tests {
   pub fn ip_hash_strategy_different_ip() {
     let lb_context_1 = LBContext {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
-      remote_addr: &"127.0.0.1:3000".parse().unwrap(),
+      client_address: &"127.0.0.1:3000".parse().unwrap(),
       pool: &BackendPool::new(
         "whoami.localhost",
         vec!["127.0.0.1:1", "127.0.0.1:2", "127.0.0.1:3", "127.0.0.1:4"],
@@ -184,7 +184,7 @@ mod tests {
     };
     let lb_context_2 = LBContext {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
-      remote_addr: &"192.168.0.4:3000".parse().unwrap(),
+      client_address: &"192.168.0.4:3000".parse().unwrap(),
       pool: &BackendPool::new(
         "whoami.localhost",
         vec!["127.0.0.1:1", "127.0.0.1:2", "127.0.0.1:3", "127.0.0.1:4"],

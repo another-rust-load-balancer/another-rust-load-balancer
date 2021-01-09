@@ -10,9 +10,10 @@ edition = "2018"
 async-stream = "0.3"
 async-trait = "0.1"
 bytes = "1.0"
+flate2 = "1.0"
 futures = "0.3"
 futures-util = "0.3"
-hyper = { version = "0.14", features = ["client", "server", "http1", "http2"] }
+hyper = { version = "0.14", features = ["client", "server", "http1", "http2", "stream"] }
 hyper-rustls = "0.22"
 log = "0.4"
 log4rs = "1.0"

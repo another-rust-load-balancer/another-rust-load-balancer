@@ -24,12 +24,15 @@ impl StickyCookie {
   pub fn new(
     cookie_name: &'static str,
     inner: Box<dyn LBStrategy + Send + Sync>,
+    http_only: bool,
+    secure: bool,
+    same_site: SameSite,
   ) -> (StickyCookie, StickyCookieCompanion) {
     let config = Arc::new(StickyCookieConfig {
       cookie_name,
-      http_only: false,
-      secure: false,
-      same_site: SameSite::None,
+      http_only,
+      secure,
+      same_site,
     });
 
     let strategy = StickyCookie {

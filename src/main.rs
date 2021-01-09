@@ -1,6 +1,7 @@
 use lb_strategies::{IPHashStrategy, RandomStrategy, RoundRobinStrategy};
 use listeners::{AcceptorProducer, Https};
-use middleware::{Compression, RequestHandlerChain};
+use middleware::compression::Compression;
+use middleware::RequestHandlerChain;
 use server::{BackendPool, BackendPoolConfig, SharedData};
 use std::io;
 use std::vec;

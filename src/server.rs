@@ -66,6 +66,7 @@ pub struct BackendPool {
   pub strategy: Box<dyn LBStrategy + Send + Sync>,
   pub config: BackendPoolConfig,
   pub client: Arc<Client<HttpConnector, Body>>,
+  pub chain: Arc<RequestHandlerChain>,
 }
 
 impl PartialEq for BackendPool {
@@ -80,13 +81,15 @@ impl BackendPool {
     addresses: Vec<&'static str>,
     strategy: Box<dyn LBStrategy + Send + Sync>,
     config: BackendPoolConfig,
+    chain: RequestHandlerChain,
   ) -> BackendPool {
     BackendPool {
       host,
       addresses,
-      config,
       strategy,
+      config,
       client: Arc::new(Client::new()),
+      chain: Arc::new(chain),
     }
   }
 
@@ -155,13 +158,14 @@ impl LoadBalanceService {
   }
 }
 
-struct RequestHandlerContext {
+pub struct RequestHandlerContext {
   remote_addr: SocketAddr,
   backend_uri: Uri,
   client: Arc<Client<HttpConnector, Body>>,
 }
 
-enum RequestHandlerChain {
+#[derive(Debug)]
+pub enum RequestHandlerChain {
   Empty,
   Entry {
     handler: Box<dyn RequestHandler>,
@@ -204,7 +208,7 @@ fn backend_request(remote_addr: &SocketAddr, backend_uri: &Uri, client_request: 
 }
 
 #[async_trait]
-trait RequestHandler: Send + Sync {
+pub trait RequestHandler: Send + Sync + std::fmt::Debug {
   async fn handle_request(
     &self,
     request: Request<Body>,
@@ -229,7 +233,8 @@ trait RequestHandler: Send + Sync {
   }
 }
 
-struct GzipCompression {}
+#[derive(Debug)]
+pub struct GzipCompression {}
 
 #[async_trait]
 impl RequestHandler for GzipCompression {
@@ -292,10 +297,7 @@ impl Service<Request<Body>> for LoadBalanceService {
           backend_uri: self.backend_uri(pool, &client_request),
           client: pool.client.clone(),
         };
-        let chain = RequestHandlerChain::Entry {
-          handler: Box::new(GzipCompression {}),
-          next: Box::new(RequestHandlerChain::Empty),
-        };
+        let chain = pool.chain.clone();
         Box::pin(async move {
           match chain.handle_request(client_request, &context).await {
             Ok(response) => Ok(response),
@@ -321,13 +323,13 @@ mod tests {
       request_https: request_https,
       remote_addr: "127.0.0.1:3000".parse().unwrap(),
       shared_data: Arc::new(SharedData {
-        backend_pools: vec![BackendPool {
+        backend_pools: vec![BackendPool::new(
           host,
-          addresses: vec!["127.0.0.1:8084"],
-          config: BackendPoolConfig::HttpConfig {},
-          strategy: Box::new(RandomStrategy::new()),
-          client: Arc::new(Client::new()),
-        }],
+          vec!["127.0.0.1:8084"],
+          Box::new(RandomStrategy::new()),
+          BackendPoolConfig::HttpConfig {},
+          RequestHandlerChain::Empty,
+        )],
       }),
     }
   }

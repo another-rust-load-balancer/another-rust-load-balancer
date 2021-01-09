@@ -1,4 +1,4 @@
-use lb_strategies::{IPHashStrategy, RandomStrategy, RoundRobinStrategy, StickyCookieStrategy};
+use lb_strategy::{ip_hash::IPHash, random::Random, round_robin::RoundRobin, sticky_cookie::StickyCookie};
 use listeners::{AcceptorProducer, Https};
 use middleware::compression::Compression;
 use middleware::RequestHandlerChain;
@@ -9,7 +9,7 @@ use std::{path::Path, sync::Arc};
 use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
 
-mod lb_strategies;
+mod lb_strategy;
 mod listeners;
 mod logging;
 mod middleware;
@@ -23,7 +23,7 @@ const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:443";
 pub async fn main() -> Result<(), io::Error> {
   logging::initialize();
 
-  let (cookie_strategy, cookie_companion) = StickyCookieStrategy::new("lb_cookie", Box::new(RoundRobinStrategy::new()));
+  let (cookie_strategy, cookie_companion) = StickyCookie::new("lb_cookie", Box::new(RoundRobin::new()));
 
   let backend_pools = vec![
     BackendPool::new(
@@ -42,7 +42,7 @@ pub async fn main() -> Result<(), io::Error> {
     BackendPool::new(
       "httpbin.localhost",
       vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
-      Box::new(RandomStrategy::new()),
+      Box::new(Random::new()),
       BackendPoolConfig::HttpConfig {},
       RequestHandlerChain::Entry {
         handler: Box::new(Compression {}),
@@ -52,7 +52,7 @@ pub async fn main() -> Result<(), io::Error> {
     BackendPool::new(
       "https.localhost",
       vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
-      Box::new(IPHashStrategy::new()),
+      Box::new(IPHash::new()),
       BackendPoolConfig::HttpsConfig {
         certificate_path: "x509/https.localhost.cer",
         private_key_path: "x509/https.localhost.key",
@@ -65,7 +65,7 @@ pub async fn main() -> Result<(), io::Error> {
     BackendPool::new(
       "www.arlb.de",
       vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
-      Box::new(RandomStrategy::new()),
+      Box::new(Random::new()),
       BackendPoolConfig::HttpsConfig {
         certificate_path: "x509/www.arlb.de.cer",
         private_key_path: "x509/www.arlb.de.key",

@@ -1,5 +1,5 @@
 use crate::{
-  lb_strategies::{LBContext, LBStrategy},
+  lb_strategy::{LBContext, LBStrategy},
   listeners::RemoteAddress,
   middleware::{RequestHandlerChain, RequestHandlerContext},
 };
@@ -195,11 +195,10 @@ impl Service<Request<Body>> for LoadBalanceService {
 
 #[cfg(test)]
 mod tests {
-  use hyper::http::uri::{Authority, Scheme};
-
-  use crate::lb_strategies::RandomStrategy;
+  use crate::lb_strategy::random::Random;
 
   use super::*;
+  use hyper::http::uri::{Authority, Scheme};
 
   fn generate_test_service(host: &'static str, request_https: bool) -> LoadBalanceService {
     LoadBalanceService {
@@ -209,7 +208,7 @@ mod tests {
         backend_pools: vec![BackendPool::new(
           host,
           vec!["127.0.0.1:8084"],
-          Box::new(RandomStrategy::new()),
+          Box::new(Random::new()),
           BackendPoolConfig::HttpConfig {},
           RequestHandlerChain::Empty,
         )],

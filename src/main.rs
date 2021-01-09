@@ -23,7 +23,13 @@ const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:443";
 pub async fn main() -> Result<(), io::Error> {
   logging::initialize();
 
-  let (cookie_strategy, cookie_companion) = StickyCookie::new("lb_cookie", Box::new(RoundRobin::new()));
+  let (cookie_strategy, cookie_companion) = StickyCookie::new(
+    "lb_cookie",
+    Box::new(RoundRobin::new()),
+    false,
+    false,
+    cookie::SameSite::Lax,
+  );
 
   let backend_pools = vec![
     BackendPool::new(

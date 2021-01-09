@@ -102,7 +102,7 @@ impl LBStrategy for StickyCookieStrategy {
 
 #[cfg(test)]
 mod tests {
-  use crate::server::BackendPoolConfig;
+  use crate::server::{BackendPoolConfig, RequestHandlerChain};
 
   use super::*;
 
@@ -116,6 +116,7 @@ mod tests {
         vec!["127.0.0.1:1"],
         Box::new(RoundRobinStrategy::new()),
         BackendPoolConfig::HttpConfig {},
+        RequestHandlerChain::Empty,
       ),
     };
     let strategy = RoundRobinStrategy::new();
@@ -135,6 +136,7 @@ mod tests {
         vec!["127.0.0.1:1", "127.0.0.1:2"],
         Box::new(RoundRobinStrategy::new()),
         BackendPoolConfig::HttpConfig {},
+        RequestHandlerChain::Empty,
       ),
     };
     let strategy = RoundRobinStrategy::new();
@@ -155,6 +157,7 @@ mod tests {
         vec!["127.0.0.1:1", "127.0.0.1:2"],
         Box::new(RoundRobinStrategy::new()),
         BackendPoolConfig::HttpConfig {},
+        RequestHandlerChain::Empty,
       ),
     };
     let strategy = IPHashStrategy::new();
@@ -176,6 +179,7 @@ mod tests {
         vec!["127.0.0.1:1", "127.0.0.1:2", "127.0.0.1:3", "127.0.0.1:4"],
         Box::new(RoundRobinStrategy::new()),
         BackendPoolConfig::HttpConfig {},
+        RequestHandlerChain::Empty,
       ),
     };
     let lb_context_2 = LBContext {
@@ -186,6 +190,7 @@ mod tests {
         vec!["127.0.0.1:1", "127.0.0.1:2", "127.0.0.1:3", "127.0.0.1:4"],
         Box::new(RoundRobinStrategy::new()),
         BackendPoolConfig::HttpConfig {},
+        RequestHandlerChain::Empty,
       ),
     };
 

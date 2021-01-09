@@ -1,6 +1,6 @@
 use lb_strategies::{IPHashStrategy, RandomStrategy, RoundRobinStrategy};
 use listeners::{AcceptorProducer, Https};
-use server::{BackendPool, BackendPoolConfig, SharedData};
+use server::{BackendPool, BackendPoolConfig, GzipCompression, RequestHandlerChain, SharedData};
 
 use std::io;
 use std::vec;
@@ -31,12 +31,20 @@ pub async fn main() -> Result<(), io::Error> {
       vec!["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"],
       Box::new(RoundRobinStrategy::new()),
       BackendPoolConfig::HttpConfig {},
+      RequestHandlerChain::Entry {
+        handler: Box::new(GzipCompression {}),
+        next: Box::new(RequestHandlerChain::Empty),
+      },
     ),
     BackendPool::new(
       "httpbin.localhost",
       vec!["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"],
       Box::new(RandomStrategy::new()),
       BackendPoolConfig::HttpConfig {},
+      RequestHandlerChain::Entry {
+        handler: Box::new(GzipCompression {}),
+        next: Box::new(RequestHandlerChain::Empty),
+      },
     ),
     BackendPool::new(
       "https.localhost",
@@ -46,6 +54,10 @@ pub async fn main() -> Result<(), io::Error> {
         certificate_path: "x509/https.localhost.cer",
         private_key_path: "x509/https.localhost.key",
       },
+      RequestHandlerChain::Entry {
+        handler: Box::new(GzipCompression {}),
+        next: Box::new(RequestHandlerChain::Empty),
+      },
     ),
     BackendPool::new(
       "www.arlb.de",
@@ -54,6 +66,10 @@ pub async fn main() -> Result<(), io::Error> {
       BackendPoolConfig::HttpsConfig {
         certificate_path: "x509/www.arlb.de.cer",
         private_key_path: "x509/www.arlb.de.key",
+      },
+      RequestHandlerChain::Entry {
+        handler: Box::new(GzipCompression {}),
+        next: Box::new(RequestHandlerChain::Empty),
       },
     ),
   ];

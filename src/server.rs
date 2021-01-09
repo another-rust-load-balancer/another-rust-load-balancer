@@ -2,17 +2,19 @@ use crate::{
   lb_strategies::{LBContext, LBStrategy},
   listeners::RemoteAddress,
 };
+use async_compression::stream::GzipEncoder;
 use async_trait::async_trait;
-use futures::future::*;
+use futures::{future::*, *};
 use hyper::{
   client::HttpConnector,
+  header::HeaderValue,
   server::accept::Accept,
   service::{make_service_fn, Service},
   Body, Client, Request, Response, Server, StatusCode, Uri,
 };
-use log::{debug, error, trace};
+use log::{debug, error};
 use std::{
-  io,
+  io::{self, ErrorKind},
   net::SocketAddr,
   pin::Pin,
   str,
@@ -203,14 +205,6 @@ fn backend_request(remote_addr: &SocketAddr, backend_uri: &Uri, client_request: 
 
 #[async_trait]
 trait RequestHandler: Send + Sync {
-  fn modify_client_request(&self, client_request: Request<Body>) -> Result<Request<Body>, Response<Body>> {
-    Ok(client_request)
-  }
-
-  fn modify_response(&self, response: Response<Body>) -> Response<Body> {
-    response
-  }
-
   async fn handle_request(
     &self,
     request: Request<Body>,
@@ -225,18 +219,53 @@ trait RequestHandler: Send + Sync {
       Err(response) => Err(response),
     }
   }
+
+  fn modify_client_request(&self, client_request: Request<Body>) -> Result<Request<Body>, Response<Body>> {
+    Ok(client_request)
+  }
+
+  fn modify_response(&self, response: Response<Body>) -> Response<Body> {
+    response
+  }
 }
 
-struct GZipCompression {}
+struct GzipCompression {}
 
-impl RequestHandler for GZipCompression {
+#[async_trait]
+impl RequestHandler for GzipCompression {
+  async fn handle_request(
+    &self,
+    request: Request<Body>,
+    next: &RequestHandlerChain,
+    context: &RequestHandlerContext,
+  ) -> Result<Response<Body>, Response<Body>> {
+    let header = request.headers().get("Accept-Encoding");
+    let compress = header.map_or(false, |value| {
+      value.to_str().map_or(false, |string| string.contains(&"gzip"))
+    });
+    next.handle_request(request, context).await.map(|response| {
+      if compress {
+        self.modify_response(response)
+      } else {
+        response
+      }
+    })
+  }
+
   fn modify_response(&self, response: Response<Body>) -> Response<Body> {
-    trace!("Hello");
+    let (parts, body) = response.into_parts();
+
+    let stream = body
+      .map_ok(|chunk| bytes::Bytes::from(chunk.to_vec()))
+      .map_err(|error| io::Error::new(ErrorKind::Other, error));
+    let compressed_stream = GzipEncoder::new(stream).map_ok(|chunk| hyper::body::Bytes::from(chunk.to_vec()));
+    let body = Body::wrap_stream(compressed_stream);
+
+    let mut response = Response::from_parts(parts, body);
+    let headers = response.headers_mut();
+    headers.insert("Content-Encoding", HeaderValue::from_static("gzip"));
+    headers.remove("Content-Length");
     response
-    //   GzDecoder::new(res)
-    // let mut body = client_request.into_body();
-    // let mapping = body.map_ok(|chunk| chunk.iter().map(|byte| byte.to_ascii_uppercase()).collect::<Vec<u8>>());
-    // *backend_request.body_mut() = Body::wrap_stream(mapping);
   }
 }
 
@@ -264,7 +293,7 @@ impl Service<Request<Body>> for LoadBalanceService {
           client: pool.client.clone(),
         };
         let chain = RequestHandlerChain::Entry {
-          handler: Box::new(GZipCompression {}),
+          handler: Box::new(GzipCompression {}),
           next: Box::new(RequestHandlerChain::Empty),
         };
         Box::pin(async move {

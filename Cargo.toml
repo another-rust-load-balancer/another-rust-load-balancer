@@ -11,6 +11,7 @@ async-stream = "0.3"
 async-trait = "0.1"
 async-compression = { version = "0.3", features = ["stream", "gzip"] }
 bytes = "0.5"
+cookie = "0.14"
 futures = "0.3"
 futures-util = "0.3"
 hyper = { version = "0.14", features = ["client", "server", "http1", "http2", "stream"] }

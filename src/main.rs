@@ -1,4 +1,4 @@
-use lb_strategies::{IPHashStrategy, RandomStrategy, RoundRobinStrategy};
+use lb_strategies::{IPHashStrategy, RandomStrategy, RoundRobinStrategy, StickyCookieStrategy};
 use listeners::{AcceptorProducer, Https};
 use middleware::compression::Compression;
 use middleware::RequestHandlerChain;
@@ -23,19 +23,20 @@ const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:443";
 pub async fn main() -> Result<(), io::Error> {
   logging::initialize();
 
-  // let round_robin_counter = Arc::new(Mutex::new(0));
-  // let rrc_handle1 = round_robin_counter.clone();
-  // let rrc_handle2 = round_robin_counter.clone();
+  let (cookie_strategy, cookie_companion) = StickyCookieStrategy::new("lb_cookie", Box::new(RoundRobinStrategy::new()));
 
   let backend_pools = vec![
     BackendPool::new(
       "whoami.localhost",
       vec!["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"],
-      Box::new(RoundRobinStrategy::new()),
+      Box::new(cookie_strategy),
       BackendPoolConfig::HttpConfig {},
       RequestHandlerChain::Entry {
         handler: Box::new(Compression {}),
-        next: Box::new(RequestHandlerChain::Empty),
+        next: Box::new(RequestHandlerChain::Entry {
+          handler: Box::new(cookie_companion),
+          next: Box::new(RequestHandlerChain::Empty),
+        }),
       },
     ),
     BackendPool::new(

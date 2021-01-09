@@ -1,11 +1,12 @@
-use hyper::{Body, Request};
+use cookie::{Cookie, SameSite};
+use hyper::{header::COOKIE, Body, Request};
 use rand::{thread_rng, Rng};
-use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::{collections::hash_map::DefaultHasher, str};
 
-use crate::server::BackendPool;
+use crate::{middleware::sticky_cookie_companion::StickyCookieCompanion, server::BackendPool};
 
 pub struct LBContext<'a> {
   pub pool: &'a BackendPool,
@@ -72,31 +73,62 @@ impl LBStrategy for RoundRobinStrategy {
   }
 }
 
+#[derive(Debug)]
+pub struct StickyCookieStrategyConfig {
+  pub cookie_name: &'static str,
+  pub secure: bool,
+  pub http_only: bool,
+  pub same_site: SameSite,
+}
+
 // TODO: Implement builder?
 #[derive(Debug)]
 pub struct StickyCookieStrategy {
-  cookie_name: &'static str,
-  secure: bool,
-  http_only: bool,
-  same_site: &'static str,
-  inner: Box<dyn LBStrategy + Send + Sync>,
+  pub config: Arc<StickyCookieStrategyConfig>,
+  pub inner: Box<dyn LBStrategy + Send + Sync>,
 }
 
 impl StickyCookieStrategy {
-  pub fn _new(cookie_name: &'static str, inner: Box<dyn LBStrategy + Send + Sync>) -> StickyCookieStrategy {
-    StickyCookieStrategy {
+  pub fn new(
+    cookie_name: &'static str,
+    inner: Box<dyn LBStrategy + Send + Sync>,
+  ) -> (StickyCookieStrategy, StickyCookieCompanion) {
+    let config = Arc::new(StickyCookieStrategyConfig {
       cookie_name,
-      inner,
       http_only: false,
       secure: false,
-      same_site: "none",
-    }
+      same_site: SameSite::None,
+    });
+
+    let strategy = StickyCookieStrategy {
+      config: config.clone(),
+      inner,
+    };
+    let companion = StickyCookieCompanion { config: config.clone() };
+
+    (strategy, companion)
+  }
+
+  fn try_parse_sticky_cookie<'a>(&self, request: &'a Request<Body>) -> Option<Cookie<'a>> {
+    let cookie_header = request.headers().get(COOKIE)?;
+
+    cookie_header.to_str().ok()?.split(";").find_map(|cookie_str| {
+      let cookie = Cookie::parse(cookie_str).ok()?;
+      if cookie.name() == self.config.cookie_name {
+        Some(cookie)
+      } else {
+        None
+      }
+    })
   }
 }
 
 impl LBStrategy for StickyCookieStrategy {
-  fn resolve_address_index(&self, _lb_context: &LBContext) -> usize {
-    todo!()
+  fn resolve_address_index(&self, lb_context: &LBContext) -> usize {
+    self
+      .try_parse_sticky_cookie(lb_context.client_request)
+      .and_then(|cookie| lb_context.pool.addresses.iter().position(|a| *a == cookie.value()))
+      .unwrap_or_else(|| self.inner.resolve_address_index(lb_context))
   }
 }
 

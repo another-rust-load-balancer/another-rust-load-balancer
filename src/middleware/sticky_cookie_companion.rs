@@ -1,18 +1,17 @@
 use std::sync::Arc;
 
+use crate::lb_strategy::sticky_cookie::StickyCookieConfig;
+
+use super::{RequestHandler, RequestHandlerContext};
 use cookie::Cookie;
 use hyper::{
   header::{HeaderValue, SET_COOKIE},
   Body, Response,
 };
 
-use crate::lb_strategies::StickyCookieStrategyConfig;
-
-use super::{RequestHandler, RequestHandlerContext};
-
 #[derive(Debug)]
 pub struct StickyCookieCompanion {
-  pub config: Arc<StickyCookieStrategyConfig>,
+  pub config: Arc<StickyCookieConfig>,
 }
 
 impl RequestHandler for StickyCookieCompanion {

@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 async-stream = "0.3"
 async-trait = "0.1"
-async-compression = { version = "0.3", features = ["stream", "gzip"] }
+async-compression = { version = "0.3", features = [ "brotli", "deflate", "gzip", "stream"] }
 bytes = "0.5"
 cookie = "0.14"
 futures = "0.3"

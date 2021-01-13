@@ -3,12 +3,10 @@ use std::sync::Arc;
 use cookie::{Cookie, SameSite};
 use hyper::{header::COOKIE, Body, Request};
 
-use crate::middleware::sticky_cookie_companion::StickyCookieCompanion;
-
 use super::{LBContext, LBStrategy};
 #[derive(Debug)]
 pub struct StickyCookieConfig {
-  pub cookie_name: &'static str,
+  pub cookie_name: String,
   pub secure: bool,
   pub http_only: bool,
   pub same_site: SameSite,
@@ -22,12 +20,12 @@ pub struct StickyCookie {
 
 impl StickyCookie {
   pub fn new(
-    cookie_name: &'static str,
+    cookie_name: String,
     inner: Box<dyn LBStrategy + Send + Sync>,
     http_only: bool,
     secure: bool,
     same_site: SameSite,
-  ) -> (StickyCookie, StickyCookieCompanion) {
+  ) -> StickyCookie {
     let config = Arc::new(StickyCookieConfig {
       cookie_name,
       http_only,
@@ -35,13 +33,10 @@ impl StickyCookie {
       same_site,
     });
 
-    let strategy = StickyCookie {
-      config: config.clone(),
+    StickyCookie {
+      config,
       inner,
-    };
-    let companion = StickyCookieCompanion { config: config.clone() };
-
-    (strategy, companion)
+    }
   }
 
   fn try_parse_sticky_cookie<'a>(&self, request: &'a Request<Body>) -> Option<Cookie<'a>> {

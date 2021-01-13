@@ -15,7 +15,7 @@ use tokio_rustls::server::TlsStream;
 use tokio_rustls::{rustls::ServerConfig, TlsAcceptor};
 
 pub struct HyperAcceptor<'a, T> {
-  acceptor: Pin<Box<dyn Stream<Item = Result<T, io::Error>> + 'a>>,
+  acceptor: Pin<Box<dyn Stream<Item = Result<T, io::Error>> + Send + 'a>>,
 }
 
 impl hyper::server::accept::Accept for HyperAcceptor<'_, TcpStream> {

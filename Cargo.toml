@@ -11,6 +11,7 @@ async-stream = "0.3"
 async-trait = "0.1"
 async-compression = { version = "0.3", features = ["stream", "gzip"] }
 bytes = "0.5"
+clap = "2.33"
 cookie = "0.14"
 futures = "0.3"
 futures-util = "0.3"
@@ -18,7 +19,10 @@ hyper = { version = "0.14", features = ["client", "server", "http1", "http2", "s
 hyper-rustls = "0.22"
 log = "0.4"
 log4rs = "1.0"
+notify = "4.0"
 rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
 tokio = {version = "1.0", features = ["full"] }
 tokio-rustls = "0.22"
 tokio-util = { version = "0.6", features = ["full"] }
+toml = "0.5"

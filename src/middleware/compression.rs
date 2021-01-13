@@ -138,7 +138,7 @@ fn parse_qvalue(qvalue: &str) -> Option<u32> {
     Some(1000)
   } else {
     let qvalue = qvalue.strip_prefix("0.").filter(|digits| digits.len() <= 3)?;
-    format!("{:0<3}", qvalue).parse().ok()
+    format!("{:0<3}", qvalue).parse().ok().filter(|qvalue| *qvalue != 0)
   }
 }
 
@@ -262,6 +262,19 @@ mod tests {
     // given:
     let mut headers = HeaderMap::new();
     headers.insert(ACCEPT_ENCODING, "deflate;q=0".parse().unwrap());
+
+    // when:
+    let actual = get_preferred_encoding(&headers);
+
+    // then:
+    assert_eq!(actual, None);
+  }
+
+  #[test]
+  fn test_get_preferred_encoding_deflate_zero_qvalue_with_decimals() {
+    // given:
+    let mut headers = HeaderMap::new();
+    headers.insert(ACCEPT_ENCODING, "deflate;q=0.000".parse().unwrap());
 
     // when:
     let actual = get_preferred_encoding(&headers);

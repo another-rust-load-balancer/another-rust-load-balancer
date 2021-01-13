@@ -53,15 +53,15 @@ where
 pub enum BackendPoolConfig {
   HttpConfig {},
   HttpsConfig {
-    certificate_path: &'static str,
-    private_key_path: &'static str,
+    certificate_path: String,
+    private_key_path: String,
   },
 }
 
 #[derive(Debug)]
 pub struct BackendPool {
-  pub host: &'static str,
-  pub addresses: Vec<&'static str>,
+  pub host: String,
+  pub addresses: Vec<String>,
   pub strategy: Box<dyn LBStrategy + Send + Sync>,
   pub config: BackendPoolConfig,
   pub client: Arc<Client<HttpConnector, Body>>,
@@ -70,14 +70,14 @@ pub struct BackendPool {
 
 impl PartialEq for BackendPool {
   fn eq(&self, other: &Self) -> bool {
-    self.host.eq(other.host)
+    self.host.eq(other.host.as_str())
   }
 }
 
 impl BackendPool {
   pub fn new(
-    host: &'static str,
-    addresses: Vec<&'static str>,
+    host: String,
+    addresses: Vec<String>,
     strategy: Box<dyn LBStrategy + Send + Sync>,
     config: BackendPoolConfig,
     chain: RequestHandlerChain,
@@ -98,7 +98,7 @@ impl BackendPool {
       client_address,
       pool: &self,
     });
-    return self.addresses[index];
+    return self.addresses[index].as_str();
   }
 }
 
@@ -134,7 +134,7 @@ impl LoadBalanceService {
       .shared_data
       .backend_pools
       .iter()
-      .find(|pool| pool.host == host_header)
+      .find(|pool| pool.host.as_str() == host_header)
   }
 
   fn matches_pool_config(&self, config: &BackendPoolConfig) -> bool {

@@ -98,7 +98,7 @@ impl BackendPool {
       client_address,
       pool: &self,
     });
-    return self.addresses[index].as_str();
+    self.addresses[index].as_str()
   }
 }
 
@@ -160,6 +160,9 @@ impl LoadBalanceService {
 impl Service<Request<Body>> for LoadBalanceService {
   type Response = Response<Body>;
   type Error = hyper::Error;
+
+  // let's allow this complex type. A refactor would make it more complicated due to the used trait types
+  #[allow(clippy::type_complexity)]
   type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
   fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -176,7 +179,7 @@ impl Service<Request<Body>> for LoadBalanceService {
     match self.pool_by_req(&client_request) {
       Some(pool) if self.matches_pool_config(&pool.config) => {
         let context = RequestHandlerContext {
-          client_address: self.client_address.clone(),
+          client_address: self.client_address,
           backend_uri: self.backend_uri(pool, &client_request),
           client: pool.client.clone(),
         };
@@ -200,14 +203,14 @@ mod tests {
   use super::*;
   use hyper::http::uri::{Authority, Scheme};
 
-  fn generate_test_service(host: &'static str, request_https: bool) -> LoadBalanceService {
+  fn generate_test_service(host: String, request_https: bool) -> LoadBalanceService {
     LoadBalanceService {
-      request_https: request_https,
+      request_https,
       client_address: "127.0.0.1:3000".parse().unwrap(),
       shared_data: Arc::new(SharedData {
         backend_pools: vec![BackendPool::new(
           host,
-          vec!["127.0.0.1:8084"],
+          vec!["127.0.0.1:8084".into()],
           Box::new(Random::new()),
           BackendPoolConfig::HttpConfig {},
           RequestHandlerChain::Empty,
@@ -218,7 +221,7 @@ mod tests {
 
   #[test]
   fn pool_by_req_no_matching_pool() {
-    let service = generate_test_service("whoami.localhost", false);
+    let service = generate_test_service("whoami.localhost".into(), false);
 
     let request = Request::builder().header("host", "whoami.de").body(()).unwrap();
 
@@ -228,7 +231,7 @@ mod tests {
   }
   #[test]
   fn pool_by_req_matching_pool() {
-    let service = generate_test_service("whoami.localhost", false);
+    let service = generate_test_service("whoami.localhost".into(), false);
     let request = Request::builder().header("host", "whoami.localhost").body(()).unwrap();
 
     let pool = service.pool_by_req(&request);
@@ -239,11 +242,11 @@ mod tests {
   #[test]
   fn matches_pool_config() {
     let http_config = BackendPoolConfig::HttpConfig {};
-    let https_service = generate_test_service("whoami.localhost", true);
-    let http_service = generate_test_service("whoami.localhost", false);
+    let https_service = generate_test_service("whoami.localhost".into(), true);
+    let http_service = generate_test_service("whoami.localhost".into(), false);
     let https_config = BackendPoolConfig::HttpsConfig {
-      certificate_path: "some/certificate/path",
-      private_key_path: "some/private/key/path",
+      certificate_path: "some/certificate/path".into(),
+      private_key_path: "some/private/key/path".into(),
     };
 
     assert_eq!(http_service.matches_pool_config(&https_config), false);
@@ -255,7 +258,7 @@ mod tests {
 
   #[test]
   fn backend_uri() {
-    let service = generate_test_service("whoami.localhost", false);
+    let service = generate_test_service("whoami.localhost".into(), false);
 
     let pool = &service.shared_data.backend_pools[0];
     let request = Request::builder()

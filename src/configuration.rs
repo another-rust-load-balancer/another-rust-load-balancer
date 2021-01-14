@@ -1,21 +1,21 @@
 use futures::Future;
-use log::{warn, error, info};
-use notify::{Watcher, RecursiveMode, watcher, DebouncedEvent, RecommendedWatcher};
+use log::{error, info, warn};
+use notify::{watcher, DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
 use std::fs;
-use std::sync::Arc;
 use std::sync::mpsc::channel;
+use std::sync::Arc;
 use std::time::Duration;
 
-use crate::lb_strategy::LBStrategy;
 use crate::lb_strategy::ip_hash::IPHash;
 use crate::lb_strategy::random::Random;
 use crate::lb_strategy::round_robin::RoundRobin;
 use crate::lb_strategy::sticky_cookie::StickyCookie;
-use crate::middleware::{RequestHandlerChain, RequestHandler};
+use crate::lb_strategy::LBStrategy;
 use crate::middleware::compression::Compression;
 use crate::middleware::sticky_cookie_companion::StickyCookieCompanion;
-use crate::server::{SharedData, BackendPool, BackendPoolConfig};
+use crate::middleware::{RequestHandler, RequestHandlerChain};
+use crate::server::{BackendPool, BackendPoolConfig, SharedData};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
@@ -31,7 +31,7 @@ pub enum BackendConfigProtocol {
 pub enum StickyCookieSameSite {
   Strict,
   Lax,
-  None
+  None,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -40,7 +40,7 @@ enum BackendConfigMiddleware {
     cookie_name: String,
     http_only: bool,
     secure: bool,
-    same_site: StickyCookieSameSite
+    same_site: StickyCookieSameSite,
   },
   Compression {},
 }
@@ -50,9 +50,9 @@ enum BackendConfigLBStrategy {
   StickyCookie {
     cookie_name: String,
     http_only: bool,
-    secure:bool,
+    secure: bool,
     same_site: StickyCookieSameSite,
-    inner: Box<BackendConfigLBStrategy>
+    inner: Box<BackendConfigLBStrategy>,
   },
   Random {},
   IPHash {},
@@ -65,26 +65,25 @@ struct BackendConfigEntry {
   host: String,
   strategy: BackendConfigLBStrategy,
   protocol: BackendConfigProtocol,
-  chain: Vec<BackendConfigMiddleware>
+  chain: Vec<BackendConfigMiddleware>,
 }
 
 #[derive(Debug, Deserialize)]
 struct BackendConfig {
-  backend_pools: Vec<BackendConfigEntry>
+  backend_pools: Vec<BackendConfigEntry>,
 }
 
 impl From<BackendConfigProtocol> for BackendPoolConfig {
   fn from(other: BackendConfigProtocol) -> Self {
     match other {
-      BackendConfigProtocol::Http {} => {
-        BackendPoolConfig::HttpConfig {}
-      }
-      BackendConfigProtocol::Https { certificate_path, private_key_path } => {
-        BackendPoolConfig::HttpsConfig {
-          certificate_path,
-          private_key_path
-        }
-      }
+      BackendConfigProtocol::Http {} => BackendPoolConfig::HttpConfig {},
+      BackendConfigProtocol::Https {
+        certificate_path,
+        private_key_path,
+      } => BackendPoolConfig::HttpsConfig {
+        certificate_path,
+        private_key_path,
+      },
     }
   }
 }
@@ -94,7 +93,7 @@ impl From<StickyCookieSameSite> for cookie::SameSite {
     match other {
       StickyCookieSameSite::Strict => cookie::SameSite::Strict,
       StickyCookieSameSite::Lax => cookie::SameSite::Lax,
-      StickyCookieSameSite::None => cookie::SameSite::None
+      StickyCookieSameSite::None => cookie::SameSite::None,
     }
   }
 }
@@ -102,14 +101,18 @@ impl From<StickyCookieSameSite> for cookie::SameSite {
 impl From<BackendConfigMiddleware> for Box<dyn RequestHandler> {
   fn from(other: BackendConfigMiddleware) -> Self {
     match other {
-      BackendConfigMiddleware::StickyCookieCompanion { cookie_name,http_only,
-        secure, same_site } => {
-        Box::new(StickyCookieCompanion::new(cookie_name, http_only,
-                                            secure, same_site.into()))
-      },
-      BackendConfigMiddleware::Compression { .. } => {
-        Box::new(Compression {})
-      }
+      BackendConfigMiddleware::StickyCookieCompanion {
+        cookie_name,
+        http_only,
+        secure,
+        same_site,
+      } => Box::new(StickyCookieCompanion::new(
+        cookie_name,
+        http_only,
+        secure,
+        same_site.into(),
+      )),
+      BackendConfigMiddleware::Compression { .. } => Box::new(Compression {}),
     }
   }
 }
@@ -120,7 +123,7 @@ impl From<Vec<BackendConfigMiddleware>> for RequestHandlerChain {
     for middleware in other.into_iter().rev() {
       chain = Box::new(RequestHandlerChain::Entry {
         handler: middleware.into(),
-        next: chain
+        next: chain,
       });
     }
     *chain
@@ -130,22 +133,25 @@ impl From<Vec<BackendConfigMiddleware>> for RequestHandlerChain {
 impl From<BackendConfigLBStrategy> for Box<dyn LBStrategy + Send + Sync> {
   fn from(other: BackendConfigLBStrategy) -> Self {
     match other {
-      BackendConfigLBStrategy::StickyCookie { cookie_name, http_only,
-        secure, same_site, inner
+      BackendConfigLBStrategy::StickyCookie {
+        cookie_name,
+        http_only,
+        secure,
+        same_site,
+        inner,
       } => {
         let inner = (*inner).into();
-        Box::new(StickyCookie::new(cookie_name, inner,
-                                   http_only, secure, same_site.into()))
+        Box::new(StickyCookie::new(
+          cookie_name,
+          inner,
+          http_only,
+          secure,
+          same_site.into(),
+        ))
       }
-      BackendConfigLBStrategy::Random {} => {
-        Box::new(Random::new())
-      }
-      BackendConfigLBStrategy::IPHash {} => {
-        Box::new(IPHash::new())
-      }
-      BackendConfigLBStrategy::RoundRobin {} => {
-        Box::new(RoundRobin::new())
-      }
+      BackendConfigLBStrategy::Random {} => Box::new(Random::new()),
+      BackendConfigLBStrategy::IPHash {} => Box::new(IPHash::new()),
+      BackendConfigLBStrategy::RoundRobin {} => Box::new(RoundRobin::new()),
     }
   }
 }
@@ -157,19 +163,14 @@ impl From<BackendConfigEntry> for BackendPool {
     let strategy = other.strategy.into();
     let config = other.protocol.into();
     let chain = other.chain.into();
-    BackendPool::new(
-      host,
-      addresses,
-      strategy,
-      config,
-      chain
-    )
+    BackendPool::new(host, addresses, strategy, config, chain)
   }
 }
 
 impl From<BackendConfig> for SharedData {
   fn from(other: BackendConfig) -> Self {
-    let backend_pools = other.backend_pools
+    let backend_pools = other
+      .backend_pools
       .into_iter()
       .map(|b| b.into())
       .collect::<Vec<BackendPool>>();
@@ -177,13 +178,12 @@ impl From<BackendConfig> for SharedData {
   }
 }
 
-pub struct BackendConfigWatcher
-{
-  toml_path: String
+pub struct BackendConfigWatcher {
+  toml_path: String,
 }
 
 impl BackendConfig {
-  fn new(toml_path: &String) -> Option<BackendConfig> {
+  fn new(toml_path: &str) -> Option<BackendConfig> {
     let toml_str_result = fs::read_to_string(toml_path);
     let toml_str = match toml_str_result {
       Ok(toml_str) => toml_str,
@@ -198,7 +198,7 @@ impl BackendConfig {
       Ok(config) => {
         info!("Successfully parsed configuration!");
         Some(config)
-      },
+      }
       Err(e) => {
         warn!("Error occurred when parsing configuration file {}: {}", toml_path, e);
         None
@@ -209,47 +209,44 @@ impl BackendConfig {
 
 impl BackendConfigWatcher {
   pub fn new(toml_path: String) -> BackendConfigWatcher {
-    BackendConfigWatcher {
-      toml_path
-    }
+    BackendConfigWatcher { toml_path }
   }
 
-  fn start_config_watcher(toml_path: &String, cs: UnboundedSender<BackendConfig>) -> RecommendedWatcher {
-    let toml_path = toml_path.clone();
+  fn start_config_watcher(toml_path: &str, cs: UnboundedSender<BackendConfig>) -> RecommendedWatcher {
+    let toml_path = toml_path.to_string();
     let (tx, rx) = channel();
     let mut watcher = watcher(tx, Duration::from_secs(10)).unwrap();
     watcher.watch(&toml_path, RecursiveMode::NonRecursive).unwrap();
-    
-    std::thread::spawn(move || {
-      loop {
-        let option_config = match rx.recv() {
-          Ok(event) => match event {
-            DebouncedEvent::NoticeWrite(_) => { BackendConfig::new(&toml_path) }
-            DebouncedEvent::Write(_) => { BackendConfig::new(&toml_path) }
-            _ => { None }
-          },
-          Err(_) => {
-            return;
-          },
-        };
 
-        if let Some(config) = option_config {
-          match cs.send(config) {
-            Ok(_) => {}
-            Err(e) => {
-              error!("Error occurred when sending backend config from config watcher thread: {:?}", e)
-            }
-          };
+    std::thread::spawn(move || loop {
+      let option_config = match rx.recv() {
+        Ok(event) => match event {
+          DebouncedEvent::NoticeWrite(_) => BackendConfig::new(&toml_path),
+          DebouncedEvent::Write(_) => BackendConfig::new(&toml_path),
+          _ => None,
+        },
+        Err(_) => {
+          return;
         }
+      };
+
+      if let Some(config) = option_config {
+        match cs.send(config) {
+          Ok(_) => {}
+          Err(e) => error!(
+            "Error occurred when sending backend config from config watcher thread: {:?}",
+            e
+          ),
+        };
       }
     });
     watcher
   }
 
   pub async fn watch_config_and_apply<F, Fut, Out>(&mut self, task_fn: F) -> Option<Out>
-    where
-      F: Fn(Arc<SharedData>) -> Fut,
-      Fut: Future<Output=Out> + 'static + Send,
+  where
+    F: Fn(Arc<SharedData>) -> Fut,
+    Fut: Future<Output = Out> + 'static + Send,
   {
     let (cs, mut cr) = unbounded_channel();
     // dropping this will stop the config watcher
@@ -276,4 +273,3 @@ impl BackendConfigWatcher {
     }
   }
 }
-

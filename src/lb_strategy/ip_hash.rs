@@ -41,8 +41,8 @@ mod tests {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
       client_address: &"127.0.0.1:3000".parse().unwrap(),
       pool: &BackendPool::new(
-        "whoami.localhost",
-        vec!["127.0.0.1:1", "127.0.0.1:2"],
+        "whoami.localhost".into(),
+        vec!["127.0.0.1:1".into(), "127.0.0.1:2".into()],
         Box::new(RoundRobin::new()),
         BackendPoolConfig::HttpConfig {},
         RequestHandlerChain::Empty,
@@ -63,8 +63,13 @@ mod tests {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
       client_address: &"127.0.0.1:3000".parse().unwrap(),
       pool: &BackendPool::new(
-        "whoami.localhost",
-        vec!["127.0.0.1:1", "127.0.0.1:2", "127.0.0.1:3", "127.0.0.1:4"],
+        "whoami.localhost".into(),
+        vec![
+          "127.0.0.1:1".into(),
+          "127.0.0.1:2".into(),
+          "127.0.0.1:3".into(),
+          "127.0.0.1:4".into(),
+        ],
         Box::new(RoundRobin::new()),
         BackendPoolConfig::HttpConfig {},
         RequestHandlerChain::Empty,
@@ -74,8 +79,13 @@ mod tests {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
       client_address: &"192.168.0.4:3000".parse().unwrap(),
       pool: &BackendPool::new(
-        "whoami.localhost",
-        vec!["127.0.0.1:1", "127.0.0.1:2", "127.0.0.1:3", "127.0.0.1:4"],
+        "whoami.localhost".into(),
+        vec![
+          "127.0.0.1:1".into(),
+          "127.0.0.1:2".into(),
+          "127.0.0.1:3".into(),
+          "127.0.0.1:4".into(),
+        ],
         Box::new(RoundRobin::new()),
         BackendPoolConfig::HttpConfig {},
         RequestHandlerChain::Empty,

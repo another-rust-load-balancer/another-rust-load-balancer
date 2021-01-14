@@ -33,16 +33,13 @@ impl StickyCookie {
       same_site,
     });
 
-    StickyCookie {
-      config,
-      inner,
-    }
+    StickyCookie { config, inner }
   }
 
   fn try_parse_sticky_cookie<'a>(&self, request: &'a Request<Body>) -> Option<Cookie<'a>> {
     let cookie_header = request.headers().get(COOKIE)?;
 
-    cookie_header.to_str().ok()?.split(";").find_map(|cookie_str| {
+    cookie_header.to_str().ok()?.split(';').find_map(|cookie_str| {
       let cookie = Cookie::parse(cookie_str).ok()?;
       if cookie.name() == self.config.cookie_name {
         Some(cookie)

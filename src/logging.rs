@@ -8,8 +8,9 @@ use log4rs::{
 use pattern::PatternEncoder;
 
 pub fn initialize() -> log4rs::Handle {
-  let log_level = std::env::var("LOG_LEVEL").unwrap_or("DEBUG".into());
-  let level_filter = parse_level_filter(&log_level).expect(&format!("Invalid log level: {}", &log_level));
+  let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "DEBUG".into());
+  let level_filter =
+    parse_level_filter(&log_level).unwrap_or_else(|| panic!(format!("Invalid log level: {}", &log_level)));
 
   let pattern = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S%.9f)} {({l}):5} {t} - {m}{n}");
 

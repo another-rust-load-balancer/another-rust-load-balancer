@@ -1,6 +1,5 @@
+use super::{LoadBalancingContext, LoadBalancingStrategy};
 use std::sync::{Arc, Mutex};
-
-use super::{LBContext, LBStrategy};
 
 #[derive(Debug)]
 pub struct RoundRobin {
@@ -15,8 +14,8 @@ impl RoundRobin {
   }
 }
 
-impl LBStrategy for RoundRobin {
-  fn resolve_address_index(&self, lb_context: &LBContext) -> usize {
+impl LoadBalancingStrategy for RoundRobin {
+  fn resolve_address_index(&self, lb_context: &LoadBalancingContext) -> usize {
     let mut rrchandle = self.rrc.lock().unwrap();
     *rrchandle = (*rrchandle + 1) % lb_context.pool.addresses.len() as u32;
     *rrchandle as usize
@@ -36,7 +35,7 @@ mod tests {
 
   #[test]
   pub fn round_robin_strategy_single_address() {
-    let lb_context = LBContext {
+    let lb_context = LoadBalancingContext {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
       client_address: &"127.0.0.1:3000".parse().unwrap(),
       pool: &BackendPool::new(
@@ -56,7 +55,7 @@ mod tests {
 
   #[test]
   pub fn round_robin_strategy_multiple_addresses() {
-    let lb_context = LBContext {
+    let lb_context = LoadBalancingContext {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
       client_address: &"127.0.0.1:3000".parse().unwrap(),
       pool: &BackendPool::new(

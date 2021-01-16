@@ -1,5 +1,6 @@
 use async_stream::stream;
 use async_trait::async_trait;
+use futures::Stream;
 use log::error;
 use std::{
   io,
@@ -9,8 +10,6 @@ use std::{
   task::{Context, Poll},
 };
 use tokio::net::{TcpListener, TcpStream};
-
-use futures::Stream;
 use tokio_rustls::server::TlsStream;
 use tokio_rustls::{rustls::ServerConfig, TlsAcceptor};
 

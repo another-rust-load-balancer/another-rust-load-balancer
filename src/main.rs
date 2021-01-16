@@ -1,3 +1,4 @@
+use crate::configuration::BackendConfigWatcher;
 use clap::{App, Arg};
 use listeners::{AcceptorProducer, Https};
 use server::{BackendPoolConfig, SharedData};
@@ -5,15 +6,14 @@ use std::io;
 use std::{path::Path, sync::Arc};
 use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
-use crate::configuration::BackendConfigWatcher;
 
-mod lb_strategy;
+mod configuration;
 mod listeners;
+mod load_balancing;
 mod logging;
 mod middleware;
 mod server;
 mod tls;
-mod configuration;
 
 const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:80";
 const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:443";
@@ -21,23 +21,24 @@ const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:443";
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {
   let matches = App::new("Another Rust Load Balancer")
-      .version("0.1")
-      .about("It's basically just another rust load balancer")
-      .arg(Arg::with_name("backend")
-          .short("b")
-          .long("backend")
-          .value_name("TOML FILE")
-          .help("The path to the backend toml configuration.")
-          .required(true)
-          .takes_value(true))
-      .get_matches();
+    .version("0.1")
+    .about("It's basically just another rust load balancer")
+    .arg(
+      Arg::with_name("backend")
+        .short("b")
+        .long("backend")
+        .value_name("TOML FILE")
+        .help("The path to the backend toml configuration.")
+        .required(true)
+        .takes_value(true),
+    )
+    .get_matches();
   let backend_toml = matches.value_of("backend").unwrap().to_string();
 
   logging::initialize();
 
   let mut config = BackendConfigWatcher::new(backend_toml);
-  config.watch_config_and_apply(start_listening).await
-    .unwrap_or(Ok(()))
+  config.watch_config_and_apply(start_listening).await.unwrap_or(Ok(()))
 }
 
 pub async fn start_listening(shared_date: Arc<SharedData>) -> Result<(), io::Error> {

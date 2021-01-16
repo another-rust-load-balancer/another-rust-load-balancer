@@ -1,9 +1,8 @@
-use std::sync::Arc;
-
+use super::{LoadBalancingContext, LoadBalancingStrategy};
 use cookie::{Cookie, SameSite};
 use hyper::{header::COOKIE, Body, Request};
+use std::sync::Arc;
 
-use super::{LBContext, LBStrategy};
 #[derive(Debug)]
 pub struct StickyCookieConfig {
   pub cookie_name: String,
@@ -15,13 +14,13 @@ pub struct StickyCookieConfig {
 #[derive(Debug)]
 pub struct StickyCookie {
   pub config: Arc<StickyCookieConfig>,
-  pub inner: Box<dyn LBStrategy + Send + Sync>,
+  pub inner: Box<dyn LoadBalancingStrategy + Send + Sync>,
 }
 
 impl StickyCookie {
   pub fn new(
     cookie_name: String,
-    inner: Box<dyn LBStrategy + Send + Sync>,
+    inner: Box<dyn LoadBalancingStrategy + Send + Sync>,
     http_only: bool,
     secure: bool,
     same_site: SameSite,
@@ -50,8 +49,8 @@ impl StickyCookie {
   }
 }
 
-impl LBStrategy for StickyCookie {
-  fn resolve_address_index(&self, lb_context: &LBContext) -> usize {
+impl LoadBalancingStrategy for StickyCookie {
+  fn resolve_address_index(&self, lb_context: &LoadBalancingContext) -> usize {
     self
       .try_parse_sticky_cookie(lb_context.client_request)
       .and_then(|cookie| lb_context.pool.addresses.iter().position(|a| *a == cookie.value()))

@@ -1,13 +1,11 @@
-use std::sync::Arc;
-
-use crate::lb_strategy::sticky_cookie::StickyCookieConfig;
-
 use super::{RequestHandler, RequestHandlerContext};
+use crate::load_balancing::sticky_cookie::StickyCookieConfig;
 use cookie::{Cookie, SameSite};
 use hyper::{
   header::{HeaderValue, SET_COOKIE},
   Body, Response,
 };
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct StickyCookieCompanion {
@@ -15,21 +13,14 @@ pub struct StickyCookieCompanion {
 }
 
 impl StickyCookieCompanion {
-  pub fn new(
-    cookie_name: String,
-    http_only: bool,
-    secure: bool,
-    same_site: SameSite,
-  ) -> StickyCookieCompanion {
+  pub fn new(cookie_name: String, http_only: bool, secure: bool, same_site: SameSite) -> StickyCookieCompanion {
     let config = Arc::new(StickyCookieConfig {
       cookie_name,
       http_only,
       secure,
       same_site,
     });
-    StickyCookieCompanion {
-      config
-    }
+    StickyCookieCompanion { config }
   }
 }
 

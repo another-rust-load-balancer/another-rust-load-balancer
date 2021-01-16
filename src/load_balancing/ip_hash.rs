@@ -1,9 +1,8 @@
+use super::{LoadBalancingContext, LoadBalancingStrategy};
 use std::{
   collections::hash_map::DefaultHasher,
   hash::{Hash, Hasher},
 };
-
-use super::{LBContext, LBStrategy};
 
 #[derive(Debug)]
 pub struct IPHash {}
@@ -14,12 +13,12 @@ impl IPHash {
   }
 }
 
-impl LBStrategy for IPHash {
-  fn resolve_address_index(&self, lb_context: &LBContext) -> usize {
+impl LoadBalancingStrategy for IPHash {
+  fn resolve_address_index(&self, context: &LoadBalancingContext) -> usize {
     // finish() does not reset state, so we'll need a new hasher for each request
     let mut hasher = DefaultHasher::new();
-    lb_context.client_address.ip().hash(&mut hasher);
-    (hasher.finish() % (lb_context.pool.addresses.len() as u64)) as usize
+    context.client_address.ip().hash(&mut hasher);
+    (hasher.finish() % (context.pool.addresses.len() as u64)) as usize
   }
 }
 
@@ -28,7 +27,7 @@ mod tests {
   use hyper::{Body, Request};
 
   use crate::{
-    lb_strategy::round_robin::RoundRobin,
+    load_balancing::round_robin::RoundRobin,
     middleware::RequestHandlerChain,
     server::{BackendPool, BackendPoolConfig},
   };
@@ -37,7 +36,7 @@ mod tests {
 
   #[test]
   pub fn ip_hash_strategy_same_ip() {
-    let lb_context = LBContext {
+    let context = LoadBalancingContext {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
       client_address: &"127.0.0.1:3000".parse().unwrap(),
       pool: &BackendPool::new(
@@ -50,16 +49,16 @@ mod tests {
     };
     let strategy = IPHash::new();
 
-    let index = strategy.resolve_address_index(&lb_context);
-    assert_eq!(strategy.resolve_address_index(&lb_context), index);
-    assert_eq!(strategy.resolve_address_index(&lb_context), index);
-    assert_eq!(strategy.resolve_address_index(&lb_context), index);
-    assert_eq!(strategy.resolve_address_index(&lb_context), index);
+    let index = strategy.resolve_address_index(&context);
+    assert_eq!(strategy.resolve_address_index(&context), index);
+    assert_eq!(strategy.resolve_address_index(&context), index);
+    assert_eq!(strategy.resolve_address_index(&context), index);
+    assert_eq!(strategy.resolve_address_index(&context), index);
   }
 
   #[test]
   pub fn ip_hash_strategy_different_ip() {
-    let lb_context_1 = LBContext {
+    let context_1 = LoadBalancingContext {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
       client_address: &"127.0.0.1:3000".parse().unwrap(),
       pool: &BackendPool::new(
@@ -75,7 +74,7 @@ mod tests {
         RequestHandlerChain::Empty,
       ),
     };
-    let lb_context_2 = LBContext {
+    let context_2 = LoadBalancingContext {
       client_request: &Request::builder().body(Body::empty()).unwrap(),
       client_address: &"192.168.0.4:3000".parse().unwrap(),
       pool: &BackendPool::new(
@@ -95,8 +94,8 @@ mod tests {
     let strategy = IPHash::new();
 
     assert_ne!(
-      strategy.resolve_address_index(&lb_context_1),
-      strategy.resolve_address_index(&lb_context_2)
+      strategy.resolve_address_index(&context_1),
+      strategy.resolve_address_index(&context_2)
     );
   }
 }

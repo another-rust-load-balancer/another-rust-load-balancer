@@ -1,6 +1,6 @@
 use crate::{
-  lb_strategy::{LBContext, LBStrategy},
   listeners::RemoteAddress,
+  load_balancing::{LoadBalancingContext, LoadBalancingStrategy},
   middleware::{RequestHandlerChain, RequestHandlerContext},
 };
 use futures::Future;
@@ -62,7 +62,7 @@ pub enum BackendPoolConfig {
 pub struct BackendPool {
   pub host: String,
   pub addresses: Vec<String>,
-  pub strategy: Box<dyn LBStrategy + Send + Sync>,
+  pub strategy: Box<dyn LoadBalancingStrategy + Send + Sync>,
   pub config: BackendPoolConfig,
   pub client: Arc<Client<HttpConnector, Body>>,
   pub chain: Arc<RequestHandlerChain>,
@@ -78,7 +78,7 @@ impl BackendPool {
   pub fn new(
     host: String,
     addresses: Vec<String>,
-    strategy: Box<dyn LBStrategy + Send + Sync>,
+    strategy: Box<dyn LoadBalancingStrategy + Send + Sync>,
     config: BackendPoolConfig,
     chain: RequestHandlerChain,
   ) -> BackendPool {
@@ -93,7 +93,7 @@ impl BackendPool {
   }
 
   pub fn get_address(&self, client_address: &SocketAddr, client_request: &Request<Body>) -> &str {
-    let index = self.strategy.resolve_address_index(&LBContext {
+    let index = self.strategy.resolve_address_index(&LoadBalancingContext {
       client_request,
       client_address,
       pool: &self,
@@ -198,7 +198,7 @@ impl Service<Request<Body>> for LoadBalanceService {
 
 #[cfg(test)]
 mod tests {
-  use crate::lb_strategy::random::Random;
+  use crate::load_balancing::random::Random;
 
   use super::*;
   use hyper::http::uri::{Authority, Scheme};

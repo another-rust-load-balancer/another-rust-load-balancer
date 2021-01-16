@@ -1,3 +1,12 @@
+use crate::load_balancing::ip_hash::IPHash;
+use crate::load_balancing::random::Random;
+use crate::load_balancing::round_robin::RoundRobin;
+use crate::load_balancing::sticky_cookie::StickyCookie;
+use crate::load_balancing::LoadBalancingStrategy;
+use crate::middleware::compression::Compression;
+use crate::middleware::sticky_cookie_companion::StickyCookieCompanion;
+use crate::middleware::{RequestHandler, RequestHandlerChain};
+use crate::server::{BackendPool, BackendPoolConfig, SharedData};
 use futures::Future;
 use log::{error, info, warn};
 use notify::{watcher, DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
@@ -6,16 +15,6 @@ use std::fs;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::Duration;
-
-use crate::lb_strategy::ip_hash::IPHash;
-use crate::lb_strategy::random::Random;
-use crate::lb_strategy::round_robin::RoundRobin;
-use crate::lb_strategy::sticky_cookie::StickyCookie;
-use crate::lb_strategy::LBStrategy;
-use crate::middleware::compression::Compression;
-use crate::middleware::sticky_cookie_companion::StickyCookieCompanion;
-use crate::middleware::{RequestHandler, RequestHandlerChain};
-use crate::server::{BackendPool, BackendPoolConfig, SharedData};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
@@ -130,7 +129,7 @@ impl From<Vec<BackendConfigMiddleware>> for RequestHandlerChain {
   }
 }
 
-impl From<BackendConfigLBStrategy> for Box<dyn LBStrategy + Send + Sync> {
+impl From<BackendConfigLBStrategy> for Box<dyn LoadBalancingStrategy + Send + Sync> {
   fn from(other: BackendConfigLBStrategy) -> Self {
     match other {
       BackendConfigLBStrategy::StickyCookie {

@@ -2,7 +2,7 @@ use super::{RequestHandler, RequestHandlerContext};
 use crate::load_balancing::sticky_cookie::StickyCookieConfig;
 use cookie::{Cookie, SameSite};
 use hyper::{
-  header::{HeaderValue, SET_COOKIE},
+  header::{Entry, HeaderValue, SET_COOKIE},
   Body, Response,
 };
 use std::sync::Arc;
@@ -33,9 +33,16 @@ impl RequestHandler for StickyCookieCompanion {
       .same_site(self.config.same_site)
       .finish();
 
-    response
-      .headers_mut()
-      .insert(SET_COOKIE, HeaderValue::from_str(&cookie.to_string()).unwrap());
+    let cookie_val = HeaderValue::from_str(&cookie.to_string()).unwrap();
+
+    match response.headers_mut().entry(SET_COOKIE) {
+      Entry::Occupied(mut entry) => {
+        entry.append(cookie_val);
+      }
+      Entry::Vacant(entry) => {
+        entry.insert(cookie_val);
+      }
+    }
 
     response
   }

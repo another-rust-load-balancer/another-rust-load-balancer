@@ -59,7 +59,7 @@ impl Compression {
 
     let mut response = Response::from_parts(parts, body);
     let headers = response.headers_mut();
-    headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+    headers.insert(CONTENT_ENCODING, encoding.into());
     headers.remove(CONTENT_LENGTH);
     response
   }

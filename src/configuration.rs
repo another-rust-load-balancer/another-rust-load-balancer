@@ -16,6 +16,7 @@ use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use std::sync::RwLock;
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 pub enum BackendConfigProtocol {
@@ -242,33 +243,31 @@ impl BackendConfigWatcher {
     watcher
   }
 
-  pub async fn watch_config_and_apply<F, Fut, Out>(&mut self, task_fn: F) -> Option<Out>
+  pub async fn watch_config_and_apply<F, Fut, Out>(&mut self, task_fn: F) -> !
   where
-    F: Fn(Arc<SharedData>) -> Fut,
+    F: Fn(Arc<RwLock<Arc<SharedData>>>) -> Fut,
     Fut: Future<Output = Out> + 'static + Send,
+    Out: 'static + Send
   {
     let (cs, mut cr) = unbounded_channel();
-    // dropping this will stop the config watcher
+    // dropping this would stop the config watcher
     let _watcher = BackendConfigWatcher::start_config_watcher(&self.toml_path, cs);
 
     let initial_config = BackendConfig::new(&self.toml_path);
     let initial_config = if initial_config.is_some() {
-      initial_config
+      initial_config.unwrap()
     } else {
-      cr.recv().await
-    }?;
+      cr.recv().await.unwrap()
+    };
 
-    let mut config = Arc::new(initial_config.into());
+    let shared_data: SharedData = initial_config.into();
+    let config = Arc::new(RwLock::new(Arc::new(shared_data)));
+    tokio::spawn(task_fn(config.clone()));
+
     loop {
-      tokio::select! {
-        r = task_fn(config) => {
-          return Some(r);
-        },
-        c = cr.recv() => {
-          let new_config = c?;
-          config = Arc::new(new_config.into());
-        }
-      }
+        let new_config = cr.recv().await.unwrap();
+        let mut config_lock = config.write().unwrap();
+        *config_lock = Arc::new(new_config.into());
     }
   }
 }

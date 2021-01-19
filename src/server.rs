@@ -1,6 +1,6 @@
 use crate::{
   listeners::RemoteAddress,
-  load_balancing::{LoadBalancingContext, LoadBalancingStrategy},
+  load_balancing::{self, LoadBalancingContext, LoadBalancingStrategy},
   middleware::{RequestHandlerChain, RequestHandlerContext},
 };
 use futures::Future;
@@ -91,19 +91,10 @@ impl BackendPool {
       chain: Arc::new(chain),
     }
   }
-
-  pub fn get_address(&self, client_address: &SocketAddr, client_request: &Request<Body>) -> &str {
-    let index = self.strategy.resolve_address_index(&LoadBalancingContext {
-      client_request,
-      client_address,
-      pool: &self,
-    });
-    self.addresses[index].as_str()
-  }
 }
 
 pub struct SharedData {
-  pub backend_pools: Vec<BackendPool>,
+  pub backend_pools: Vec<Arc<BackendPool>>,
 }
 
 pub struct LoadBalanceService {
@@ -127,7 +118,7 @@ pub fn bad_gateway() -> Response<Body> {
 }
 
 impl LoadBalanceService {
-  fn pool_by_req<T>(&self, client_request: &Request<T>) -> Option<&BackendPool> {
+  fn pool_by_req<T>(&self, client_request: &Request<T>) -> Option<Arc<BackendPool>> {
     let host_header = client_request.headers().get("host")?;
 
     self
@@ -135,6 +126,7 @@ impl LoadBalanceService {
       .backend_pools
       .iter()
       .find(|pool| pool.host.as_str() == host_header)
+      .map(|pool| pool.clone())
   }
 
   fn matches_pool_config(&self, config: &BackendPoolConfig) -> bool {
@@ -143,17 +135,6 @@ impl LoadBalanceService {
       BackendPoolConfig::HttpsConfig { .. } if !self.request_https => false,
       _ => true,
     }
-  }
-
-  fn backend_uri(&self, pool: &BackendPool, client_request: &Request<Body>) -> Uri {
-    let path = client_request.uri().path_and_query().unwrap().clone();
-
-    Uri::builder()
-      .path_and_query(path)
-      .scheme("http")
-      .authority(pool.get_address(&self.client_address, &client_request))
-      .build()
-      .unwrap()
   }
 }
 
@@ -177,20 +158,16 @@ impl Service<Request<Body>> for LoadBalanceService {
       client_request.uri()
     );
     match self.pool_by_req(&client_request) {
-      Some(pool) if self.matches_pool_config(&pool.config) => {
-        let context = RequestHandlerContext {
+      Some(pool) if self.matches_pool_config(&pool.config) => Box::pin(async move {
+        let context = LoadBalancingContext {
+          request: client_request,
           client_address: self.client_address,
-          backend_uri: self.backend_uri(pool, &client_request),
-          client: pool.client.clone(),
+          pool,
         };
-        let chain = pool.chain.clone();
-        Box::pin(async move {
-          match chain.handle_request(client_request, &context).await {
-            Ok(response) => Ok(response),
-            Err(response) => Ok(response),
-          }
-        })
-      }
+        // let chain = pool.chain.clone();
+        // let strategy = &pool.strategy;
+        Ok(load_balancing::handle_request(&pool.strategy, &pool.chain, context).await)
+      }),
       _ => Box::pin(async { Ok(not_found()) }),
     }
   }

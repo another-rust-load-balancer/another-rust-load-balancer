@@ -171,8 +171,8 @@ impl From<BackendConfig> for SharedData {
     let backend_pools = other
       .backend_pools
       .into_iter()
-      .map(|b| b.into())
-      .collect::<Vec<BackendPool>>();
+      .map(|b| Arc::new(b.into()))
+      .collect::<Vec<Arc<BackendPool>>>();
     SharedData { backend_pools }
   }
 }

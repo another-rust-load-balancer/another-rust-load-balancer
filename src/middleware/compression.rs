@@ -1,5 +1,5 @@
 use super::{RequestHandler, RequestHandlerChain, RequestHandlerContext};
-use async_compression::stream::{BrotliEncoder, DeflateEncoder, GzipEncoder};
+use async_compression::tokio::bufread::{BrotliEncoder, DeflateEncoder, GzipEncoder};
 use async_trait::async_trait;
 use futures::TryStreamExt;
 use hyper::{
@@ -7,9 +7,13 @@ use hyper::{
   Body, HeaderMap, Request, Response,
 };
 use std::{
-  error::Error,
   fmt::Display,
   io::{self, ErrorKind},
+};
+use tokio::io::AsyncRead;
+use tokio_util::{
+  codec::{BytesCodec, FramedRead},
+  io::StreamReader,
 };
 use Encoding::{BROTLI, DEFLATE, GZIP};
 
@@ -39,21 +43,18 @@ impl Compression {
   fn compress_response(&self, response: Response<Body>, encoding: &Encoding) -> Response<Body> {
     let (parts, body) = response.into_parts();
 
-    let stream = body
-      .map_ok(|chunk| bytes::Bytes::from(chunk.to_vec()))
-      .map_err(|error| io::Error::new(ErrorKind::Other, error));
+    let stream = StreamReader::new(body.map_err(|error| io::Error::new(ErrorKind::Other, error)));
+
     let body = match encoding {
       BROTLI => to_body(BrotliEncoder::new(stream)),
       DEFLATE => to_body(DeflateEncoder::new(stream)),
       GZIP => to_body(GzipEncoder::new(stream)),
     };
-    fn to_body<S, O, E>(stream: S) -> hyper::Body
+    fn to_body<S>(stream: S) -> hyper::Body
     where
-      S: TryStreamExt<Item = Result<O, E>, Ok = O, Error = E> + Send + 'static,
-      O: AsRef<[u8]>,
-      E: Error + Send + Sync + 'static,
+      S: AsyncRead + Send + 'static,
     {
-      Body::wrap_stream(stream.map_ok(|chunk| hyper::body::Bytes::from(chunk.as_ref().to_vec())))
+      Body::wrap_stream(FramedRead::new(stream, BytesCodec::new()))
     }
 
     let mut response = Response::from_parts(parts, body);

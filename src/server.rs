@@ -1,7 +1,7 @@
 use crate::{
   listeners::RemoteAddress,
   load_balancing::{self, LoadBalancingContext, LoadBalancingStrategy},
-  middleware::{RequestHandlerChain, RequestHandlerContext},
+  middleware::RequestHandlerChain,
 };
 use futures::Future;
 use futures::TryFutureExt;
@@ -9,14 +9,13 @@ use hyper::{
   client::HttpConnector,
   server::accept::Accept,
   service::{make_service_fn, Service},
-  Body, Client, Request, Response, Server, StatusCode, Uri,
+  Body, Client, Request, Response, Server, StatusCode,
 };
 use log::debug;
 use std::{
   io,
   net::SocketAddr,
   pin::Pin,
-  str,
   sync::Arc,
   task::{Context, Poll},
 };
@@ -62,7 +61,7 @@ pub enum BackendPoolConfig {
 pub struct BackendPool {
   pub host: String,
   pub addresses: Vec<String>,
-  pub strategy: Box<dyn LoadBalancingStrategy + Send + Sync>,
+  pub strategy: Box<dyn LoadBalancingStrategy>,
   pub config: BackendPoolConfig,
   pub client: Arc<Client<HttpConnector, Body>>,
   pub chain: Arc<RequestHandlerChain>,
@@ -78,7 +77,7 @@ impl BackendPool {
   pub fn new(
     host: String,
     addresses: Vec<String>,
-    strategy: Box<dyn LoadBalancingStrategy + Send + Sync>,
+    strategy: Box<dyn LoadBalancingStrategy>,
     config: BackendPoolConfig,
     chain: RequestHandlerChain,
   ) -> BackendPool {
@@ -150,24 +149,18 @@ impl Service<Request<Body>> for LoadBalanceService {
     Poll::Ready(Ok(()))
   }
 
-  fn call(&mut self, client_request: Request<Body>) -> Self::Future {
-    debug!(
-      "{:#?} {} {}",
-      client_request.version(),
-      client_request.method(),
-      client_request.uri()
-    );
-    match self.pool_by_req(&client_request) {
-      Some(pool) if self.matches_pool_config(&pool.config) => Box::pin(async move {
-        let context = LoadBalancingContext {
-          request: client_request,
-          client_address: self.client_address,
-          pool,
-        };
-        // let chain = pool.chain.clone();
-        // let strategy = &pool.strategy;
-        Ok(load_balancing::handle_request(&pool.strategy, &pool.chain, context).await)
-      }),
+  fn call(&mut self, request: Request<Body>) -> Self::Future {
+    debug!("{:#?} {} {}", request.version(), request.method(), request.uri());
+    match self.pool_by_req(&request) {
+      Some(pool) if self.matches_pool_config(&pool.config) => {
+        let client_address = self.client_address;
+        Box::pin(async move {
+          let context = LoadBalancingContext { client_address, pool };
+          let result =
+            load_balancing::handle_request(request, &context.pool.strategy, &context.pool.chain, &context).await;
+          Ok(result)
+        })
+      }
       _ => Box::pin(async { Ok(not_found()) }),
     }
   }
@@ -175,23 +168,21 @@ impl Service<Request<Body>> for LoadBalanceService {
 
 #[cfg(test)]
 mod tests {
-  use crate::load_balancing::random::Random;
-
   use super::*;
-  use hyper::http::uri::{Authority, Scheme};
+  use crate::load_balancing::random::Random;
 
   fn generate_test_service(host: String, request_https: bool) -> LoadBalanceService {
     LoadBalanceService {
       request_https,
       client_address: "127.0.0.1:3000".parse().unwrap(),
       shared_data: Arc::new(SharedData {
-        backend_pools: vec![BackendPool::new(
+        backend_pools: vec![Arc::new(BackendPool::new(
           host,
           vec!["127.0.0.1:8084".into()],
           Box::new(Random::new()),
           BackendPoolConfig::HttpConfig {},
           RequestHandlerChain::Empty,
-        )],
+        ))],
       }),
     }
   }
@@ -213,7 +204,7 @@ mod tests {
 
     let pool = service.pool_by_req(&request);
 
-    assert_eq!(*pool.unwrap(), service.shared_data.backend_pools[0]);
+    assert_eq!(*pool.unwrap(), *service.shared_data.backend_pools[0]);
   }
 
   #[test]
@@ -231,24 +222,5 @@ mod tests {
 
     assert_eq!(https_service.matches_pool_config(&https_config), true);
     assert_eq!(https_service.matches_pool_config(&http_config), false);
-  }
-
-  #[test]
-  fn backend_uri() {
-    let service = generate_test_service("whoami.localhost".into(), false);
-
-    let pool = &service.shared_data.backend_pools[0];
-    let request = Request::builder()
-      .uri("https://www.rust-lang.org/path?param=yolo")
-      .header("host", "whoami.localhost")
-      .body(Body::empty())
-      .unwrap();
-
-    let backend_uri = service.backend_uri(pool, &request);
-
-    assert_eq!(backend_uri.authority(), Some(&Authority::from_static("127.0.0.1:8084")));
-    assert_eq!(backend_uri.path(), "/path");
-    assert_eq!(backend_uri.query(), Some("param=yolo"));
-    assert_eq!(backend_uri.scheme(), Some(&Scheme::HTTP));
   }
 }

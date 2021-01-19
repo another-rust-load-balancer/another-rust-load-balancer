@@ -129,7 +129,7 @@ impl From<Vec<BackendConfigMiddleware>> for RequestHandlerChain {
   }
 }
 
-impl From<BackendConfigLBStrategy> for Box<dyn LoadBalancingStrategy + Send + Sync> {
+impl From<BackendConfigLBStrategy> for Box<dyn LoadBalancingStrategy> {
   fn from(other: BackendConfigLBStrategy) -> Self {
     match other {
       BackendConfigLBStrategy::StickyCookie {

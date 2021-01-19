@@ -20,15 +20,16 @@ use std::{
   task::{Context, Poll},
 };
 use tokio::io::{AsyncRead, AsyncWrite};
+use std::sync::RwLock;
 
-pub async fn create<'a, I, IE, IO>(acceptor: I, shared_data: Arc<SharedData>, https: bool) -> Result<(), io::Error>
+pub async fn create<'a, I, IE, IO>(acceptor: I, shared_data: Arc<RwLock<Arc<SharedData>>>, https: bool) -> Result<(), io::Error>
 where
   I: Accept<Conn = IO, Error = IE>,
   IE: Into<Box<dyn std::error::Error + Send + Sync>>,
   IO: AsyncRead + AsyncWrite + Unpin + Send + RemoteAddress + 'static,
 {
   let service = make_service_fn(move |stream: &IO| {
-    let shared_data = shared_data.clone();
+    let shared_data = (*shared_data.read().unwrap()).clone();
     let remote_addr = stream.remote_addr().expect("No remote SocketAddr");
 
     async move {

@@ -1,6 +1,13 @@
-use super::{LoadBalancingContext, LoadBalancingStrategy};
+use crate::middleware::{RequestHandlerChain, RequestHandlerContext};
+
+use super::{create_context, LoadBalancingContext, LoadBalancingStrategy};
+use async_trait::async_trait;
 use cookie::{Cookie, SameSite};
-use hyper::{header::COOKIE, Body, Request};
+use hyper::{
+  header::{Entry, HeaderValue, COOKIE, SET_COOKIE},
+  http::response,
+  Body, Request, Response,
+};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -49,11 +56,52 @@ impl StickyCookie {
   }
 }
 
+#[async_trait]
 impl LoadBalancingStrategy for StickyCookie {
-  fn resolve_address_index(&self, lb_context: &LoadBalancingContext) -> usize {
+  async fn handle_request(&self, chain: &RequestHandlerChain, lb_context: LoadBalancingContext) -> Response<Body> {
+    let index = self.resolve_address_index(&lb_context);
+
+    let authority = &lb_context.pool.addresses[index];
+
+    let context = create_context(index, &lb_context);
+
+    let cookie_missing = true;
+
+    match chain.handle_request(lb_context.request, &context).await {
+      Ok(mut response) => {
+        if cookie_missing {
+          let cookie = Cookie::build(self.config.cookie_name.as_str(), authority)
+            .http_only(self.config.http_only)
+            .secure(self.config.secure)
+            .same_site(self.config.same_site)
+            .finish();
+
+          let cookie_val = HeaderValue::from_str(&cookie.to_string()).unwrap();
+
+          match response.headers_mut().entry(SET_COOKIE) {
+            Entry::Occupied(mut entry) => {
+              entry.append(cookie_val);
+            }
+            Entry::Vacant(entry) => {
+              entry.insert(cookie_val);
+            }
+          }
+        }
+        response
+      }
+      Err(response) => response,
+    }
+
+    // self
+    //   .try_parse_sticky_cookie(&request)
+    //   .and_then(|cookie| lb_context.pool.addresses.iter().position(|a| *a == cookie.value()))
+    //   .unwrap_or_else(|| self.inner.resolve_address_index(lb_context))
+  }
+
+  fn resolve_address_index(&self, context: &LoadBalancingContext) -> usize {
     self
-      .try_parse_sticky_cookie(lb_context.client_request)
-      .and_then(|cookie| lb_context.pool.addresses.iter().position(|a| *a == cookie.value()))
-      .unwrap_or_else(|| self.inner.resolve_address_index(lb_context))
+      .try_parse_sticky_cookie(&context.request)
+      .and_then(|cookie| context.pool.addresses.iter().position(|a| *a == cookie.value()))
+      .unwrap_or_else(|| self.inner.resolve_address_index(context))
   }
 }

@@ -1,4 +1,4 @@
-use super::{LoadBalancingContext, LoadBalancingStrategy};
+use super::{LoadBalanceTarget, LoadBalancingContext, LoadBalancingStrategy};
 use hyper::{Body, Request, Response};
 use std::{
   collections::hash_map::DefaultHasher,
@@ -19,11 +19,11 @@ impl LoadBalancingStrategy for IPHash {
     &'l self,
     _request: &Request<Body>,
     context: &'l LoadBalancingContext,
-  ) -> (usize, Box<dyn FnOnce(Response<Body>) -> Response<Body> + Send + 'l>) {
+  ) -> LoadBalanceTarget {
     let mut hasher = DefaultHasher::new();
     context.client_address.ip().hash(&mut hasher);
     let index = (hasher.finish() % (context.pool.addresses.len() as u64)) as usize;
-    (index, Box::new(|it| it))
+    LoadBalanceTarget::new(index)
   }
 }
 
@@ -54,11 +54,11 @@ mod tests {
     };
     let strategy = IPHash::new();
 
-    let index = strategy.resolve_address_index(&request, &context).0;
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, index);
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, index);
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, index);
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, index);
+    let index = strategy.resolve_address_index(&request, &context).index;
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, index);
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, index);
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, index);
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, index);
   }
 
   #[test]
@@ -100,8 +100,8 @@ mod tests {
     let strategy = IPHash::new();
 
     assert_ne!(
-      strategy.resolve_address_index(&request_1, &context_1).0,
-      strategy.resolve_address_index(&request_2, &context_2).0
+      strategy.resolve_address_index(&request_1, &context_1).index,
+      strategy.resolve_address_index(&request_2, &context_2).index
     );
   }
 }

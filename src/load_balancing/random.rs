@@ -1,4 +1,4 @@
-use super::{LoadBalancingContext, LoadBalancingStrategy};
+use super::{LoadBalanceTarget, LoadBalancingContext, LoadBalancingStrategy};
 use async_trait::async_trait;
 use hyper::{Body, Request, Response};
 use rand::{thread_rng, Rng};
@@ -18,9 +18,9 @@ impl LoadBalancingStrategy for Random {
     &'l self,
     _request: &Request<Body>,
     context: &'l LoadBalancingContext,
-  ) -> (usize, Box<dyn FnOnce(Response<Body>) -> Response<Body> + Send + 'l>) {
+  ) -> LoadBalanceTarget {
     let mut rng = thread_rng();
     let index = rng.gen_range(0..context.pool.addresses.len());
-    (index, Box::new(|it| it))
+    LoadBalanceTarget::new(index)
   }
 }

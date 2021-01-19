@@ -1,4 +1,4 @@
-use super::{LoadBalancingContext, LoadBalancingStrategy};
+use super::{LoadBalanceTarget, LoadBalancingContext, LoadBalancingStrategy};
 use async_trait::async_trait;
 use cookie::{Cookie, SameSite};
 use hyper::{
@@ -86,16 +86,15 @@ impl LoadBalancingStrategy for StickyCookie {
     &'l self,
     request: &Request<Body>,
     context: &'l LoadBalancingContext,
-  ) -> (usize, Box<dyn FnOnce(Response<Body>) -> Response<Body> + Send + 'l>) {
+  ) -> LoadBalanceTarget {
     let index = self
       .try_parse_sticky_cookie(&request)
       .and_then(|cookie| context.pool.addresses.iter().position(|a| *a == cookie.value()));
 
     if let Some(index) = index {
-      (
-        index,
-        Box::new(move |response| self.modify_response(response, index, context)),
-      )
+      LoadBalanceTarget::new_with_response_mapping(index, move |response| {
+        self.modify_response(response, index, context)
+      })
     } else {
       self.inner.resolve_address_index(request, context)
     }

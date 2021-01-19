@@ -54,7 +54,7 @@ impl Compression {
     where
       S: AsyncRead + Send + 'static,
     {
-      Body::wrap_stream(FramedRead::new(stream, BytesCodec::new()).map_ok(|bytes| bytes.freeze()))
+      Body::wrap_stream(FramedRead::new(stream, BytesCodec::new()))
     }
 
     let mut response = Response::from_parts(parts, body);

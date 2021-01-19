@@ -1,6 +1,6 @@
 use super::{LoadBalanceTarget, LoadBalancingContext, LoadBalancingStrategy};
 use async_trait::async_trait;
-use hyper::{Body, Request, Response};
+use hyper::{Body, Request};
 use rand::{thread_rng, Rng};
 
 #[derive(Debug)]

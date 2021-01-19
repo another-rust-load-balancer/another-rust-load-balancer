@@ -1,5 +1,5 @@
 use super::{LoadBalanceTarget, LoadBalancingContext, LoadBalancingStrategy};
-use hyper::{Body, Request, Response};
+use hyper::{Body, Request};
 use std::{
   collections::hash_map::DefaultHasher,
   hash::{Hash, Hasher},

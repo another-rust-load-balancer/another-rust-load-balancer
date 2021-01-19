@@ -1,4 +1,4 @@
-use crate::server::bad_gateway;
+use crate::{load_balancing::LoadBalancingContext, server::bad_gateway};
 use async_trait::async_trait;
 use hyper::{client::HttpConnector, Body, Client, Request, Response, Uri};
 use log::error;
@@ -11,6 +11,28 @@ pub struct RequestHandlerContext {
   pub client_address: SocketAddr,
   pub backend_uri: Uri,
   pub client: Arc<Client<HttpConnector, Body>>,
+}
+
+impl RequestHandlerContext {
+  pub fn new(request: &Request<Body>, index: usize, context: &LoadBalancingContext) -> RequestHandlerContext {
+    let authority = context.pool.addresses[index].as_str();
+    let backend_uri = backend_uri(request, authority);
+    RequestHandlerContext {
+      client: context.pool.client.clone(),
+      backend_uri,
+      client_address: context.client_address,
+    }
+  }
+}
+
+fn backend_uri(request: &Request<Body>, authority: &str) -> Uri {
+  let path = request.uri().path_and_query().unwrap().clone();
+  Uri::builder()
+    .path_and_query(path)
+    .scheme("http")
+    .authority(authority)
+    .build()
+    .unwrap()
 }
 
 #[derive(Debug)]

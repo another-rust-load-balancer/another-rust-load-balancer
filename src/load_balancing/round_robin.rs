@@ -1,4 +1,4 @@
-use super::{LoadBalancingContext, LoadBalancingStrategy};
+use super::{LoadBalanceTarget, LoadBalancingContext, LoadBalancingStrategy};
 use hyper::{Body, Request, Response};
 use std::sync::{Arc, Mutex};
 
@@ -20,10 +20,10 @@ impl LoadBalancingStrategy for RoundRobin {
     &'l self,
     _request: &Request<Body>,
     lb_context: &'l LoadBalancingContext,
-  ) -> (usize, Box<dyn FnOnce(Response<Body>) -> Response<Body> + Send + 'l>) {
+  ) -> LoadBalanceTarget {
     let mut rrc_handle = self.rrc.lock().unwrap();
     *rrc_handle = (*rrc_handle + 1) % lb_context.pool.addresses.len() as u32;
-    (*rrc_handle as usize, Box::new(|it| it))
+    LoadBalanceTarget::new(*rrc_handle as usize)
   }
 }
 
@@ -51,9 +51,9 @@ mod tests {
     };
     let strategy = RoundRobin::new();
 
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, 0);
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, 0);
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, 0);
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, 0);
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, 0);
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, 0);
   }
 
   #[test]
@@ -71,9 +71,9 @@ mod tests {
     };
     let strategy = RoundRobin::new();
 
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, 1);
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, 0);
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, 1);
-    assert_eq!(strategy.resolve_address_index(&request, &context).0, 0);
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, 1);
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, 0);
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, 1);
+    assert_eq!(strategy.resolve_address_index(&request, &context).index, 0);
   }
 }

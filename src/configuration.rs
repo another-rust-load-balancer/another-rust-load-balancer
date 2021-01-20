@@ -4,7 +4,6 @@ use crate::load_balancing::round_robin::RoundRobin;
 use crate::load_balancing::sticky_cookie::StickyCookie;
 use crate::load_balancing::LoadBalancingStrategy;
 use crate::middleware::compression::Compression;
-use crate::middleware::sticky_cookie_companion::StickyCookieCompanion;
 use crate::middleware::{RequestHandler, RequestHandlerChain};
 use crate::server::{BackendPool, BackendPoolConfig, SharedData};
 use futures::Future;
@@ -35,12 +34,6 @@ pub enum StickyCookieSameSite {
 
 #[derive(Debug, Deserialize, PartialEq)]
 enum BackendConfigMiddleware {
-  StickyCookieCompanion {
-    cookie_name: String,
-    http_only: bool,
-    secure: bool,
-    same_site: StickyCookieSameSite,
-  },
   Compression {},
 }
 
@@ -100,17 +93,6 @@ impl From<StickyCookieSameSite> for cookie::SameSite {
 impl From<BackendConfigMiddleware> for Box<dyn RequestHandler> {
   fn from(other: BackendConfigMiddleware) -> Self {
     match other {
-      BackendConfigMiddleware::StickyCookieCompanion {
-        cookie_name,
-        http_only,
-        secure,
-        same_site,
-      } => Box::new(StickyCookieCompanion::new(
-        cookie_name,
-        http_only,
-        secure,
-        same_site.into(),
-      )),
       BackendConfigMiddleware::Compression { .. } => Box::new(Compression {}),
     }
   }

@@ -6,7 +6,6 @@ strategy={ StickyCookie = {cookie_name="lb_cookie", http_only=false, secure=fals
 protocol = { Http = {} }
 chain = [
     { Compression = {} },
-    { StickyCookieCompanion = {cookie_name="lb_cookie", http_only=false, secure=false, same_site={Lax={}}} }
 ]
 
 ## Pool 2

@@ -5,7 +5,6 @@ use log::error;
 use std::{net::SocketAddr, sync::Arc};
 
 pub mod compression;
-pub mod sticky_cookie_companion;
 
 pub struct RequestHandlerContext {
   pub client_address: SocketAddr,

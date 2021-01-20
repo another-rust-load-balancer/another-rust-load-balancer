@@ -5,20 +5,14 @@ use hyper::{
   header::{Entry, HeaderValue, COOKIE, SET_COOKIE},
   Body, Request, Response,
 };
-use std::sync::Arc;
-
-#[derive(Debug)]
-pub struct StickyCookieConfig {
-  pub cookie_name: String,
-  pub secure: bool,
-  pub http_only: bool,
-  pub same_site: SameSite,
-}
 
 #[derive(Debug)]
 pub struct StickyCookie {
-  pub config: Arc<StickyCookieConfig>,
+  pub cookie_name: String,
   pub inner: Box<dyn LoadBalancingStrategy>,
+  pub http_only: bool,
+  pub secure: bool,
+  pub same_site: SameSite,
 }
 
 impl StickyCookie {
@@ -29,14 +23,13 @@ impl StickyCookie {
     secure: bool,
     same_site: SameSite,
   ) -> StickyCookie {
-    let config = Arc::new(StickyCookieConfig {
+    StickyCookie {
       cookie_name,
+      inner,
       http_only,
       secure,
       same_site,
-    });
-
-    StickyCookie { config, inner }
+    }
   }
 
   fn try_parse_sticky_cookie<'a>(&self, request: &'a Request<Body>) -> Option<Cookie<'a>> {
@@ -44,7 +37,7 @@ impl StickyCookie {
 
     cookie_header.to_str().ok()?.split(';').find_map(|cookie_str| {
       let cookie = Cookie::parse(cookie_str).ok()?;
-      if cookie.name() == self.config.cookie_name {
+      if cookie.name() == self.cookie_name {
         Some(cookie)
       } else {
         None
@@ -60,10 +53,10 @@ impl StickyCookie {
   ) -> Response<Body> {
     let authority = &lb_context.pool.addresses[index];
 
-    let cookie = Cookie::build(self.config.cookie_name.as_str(), authority)
-      .http_only(self.config.http_only)
-      .secure(self.config.secure)
-      .same_site(self.config.same_site)
+    let cookie = Cookie::build(self.cookie_name.as_str(), authority)
+      .http_only(self.http_only)
+      .secure(self.secure)
+      .same_site(self.same_site)
       .finish();
 
     let cookie_val = HeaderValue::from_str(&cookie.to_string()).unwrap();

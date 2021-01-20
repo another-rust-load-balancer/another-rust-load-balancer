@@ -21,18 +21,28 @@ pub struct LoadBalanceTarget<'l> {
   response_mapper: Box<dyn FnOnce(Response<Body>) -> Response<Body> + Send + 'l>,
 }
 
-impl LoadBalanceTarget<'_> {
+impl<'l> LoadBalanceTarget<'l> {
   fn new(index: usize) -> LoadBalanceTarget<'static> {
     LoadBalanceTarget::new_with_response_mapping(index, identity)
   }
 
-  fn new_with_response_mapping<'l, F>(index: usize, response_mapper: F) -> LoadBalanceTarget<'l>
+  fn new_with_response_mapping<F>(index: usize, response_mapper: F) -> LoadBalanceTarget<'l>
   where
     F: FnOnce(Response<Body>) -> Response<Body> + Send + 'l,
   {
     LoadBalanceTarget {
       index,
       response_mapper: Box::new(response_mapper),
+    }
+  }
+
+  fn map_response<F>(self, response_mapper: F) -> LoadBalanceTarget<'l>
+  where
+    F: FnOnce(Response<Body>) -> Response<Body> + Send + 'l,
+  {
+    LoadBalanceTarget {
+      index: self.index,
+      response_mapper: Box::new(move |response| response_mapper((self.response_mapper)(response))),
     }
   }
 }

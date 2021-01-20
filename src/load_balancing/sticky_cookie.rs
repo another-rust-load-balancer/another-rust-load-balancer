@@ -92,11 +92,12 @@ impl LoadBalancingStrategy for StickyCookie {
       .and_then(|cookie| context.pool.addresses.iter().position(|a| *a == cookie.value()));
 
     if let Some(index) = index {
-      LoadBalanceTarget::new_with_response_mapping(index, move |response| {
-        self.modify_response(response, index, context)
-      })
+      LoadBalanceTarget::new(index)
     } else {
-      self.inner.resolve_address_index(request, context)
+      let target = self.inner.resolve_address_index(request, context);
+      let index = target.index;
+
+      target.map_response(move |response| self.modify_response(response, index, context))
     }
   }
 }

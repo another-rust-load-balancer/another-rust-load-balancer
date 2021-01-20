@@ -1,4 +1,4 @@
-use super::{LoadBalanceTarget, LoadBalancingContext, LoadBalancingStrategy};
+use super::{LoadBalancingContext, LoadBalancingStrategy, RequestForwarder};
 use async_trait::async_trait;
 use cookie::{Cookie, SameSite};
 use hyper::{
@@ -45,15 +45,8 @@ impl StickyCookie {
     })
   }
 
-  fn modify_response(
-    &self,
-    mut response: Response<Body>,
-    index: usize,
-    lb_context: &LoadBalancingContext,
-  ) -> Response<Body> {
-    let authority = &lb_context.pool.addresses[index];
-
-    let cookie = Cookie::build(self.cookie_name.as_str(), authority)
+  fn modify_response(&self, mut response: Response<Body>, backend_address: &str) -> Response<Body> {
+    let cookie = Cookie::build(self.cookie_name.as_str(), backend_address)
       .http_only(self.http_only)
       .secure(self.secure)
       .same_site(self.same_site)
@@ -75,22 +68,17 @@ impl StickyCookie {
 
 #[async_trait]
 impl LoadBalancingStrategy for StickyCookie {
-  fn resolve_address_index<'l>(
-    &'l self,
-    request: &Request<Body>,
-    context: &'l LoadBalancingContext,
-  ) -> LoadBalanceTarget {
-    let index = self
+  fn select_backend<'l>(&'l self, request: &Request<Body>, context: &'l LoadBalancingContext) -> RequestForwarder {
+    let backend_address = self
       .try_parse_sticky_cookie(&request)
-      .and_then(|cookie| context.pool.addresses.iter().position(|a| *a == cookie.value()));
+      .and_then(|cookie| context.backend_addresses.iter().find(|it| *it == cookie.value()));
 
-    if let Some(index) = index {
-      LoadBalanceTarget::new(index)
+    if let Some(backend_address) = backend_address {
+      RequestForwarder::new(backend_address)
     } else {
-      let target = self.inner.resolve_address_index(request, context);
-      let index = target.index;
-
-      target.map_response(move |response| self.modify_response(response, index, context))
+      let backend = self.inner.select_backend(request, context);
+      let backend_address = backend.address;
+      backend.map_response(move |response| self.modify_response(response, backend_address))
     }
   }
 }

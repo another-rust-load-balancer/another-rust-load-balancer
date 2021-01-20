@@ -1,6 +1,6 @@
 use crate::{
   listeners::RemoteAddress,
-  load_balancing::{self, LoadBalancingContext, LoadBalancingStrategy},
+  load_balancing::{LoadBalancingContext, LoadBalancingStrategy},
   middleware::RequestHandlerChain,
 };
 use futures::Future;
@@ -63,8 +63,8 @@ pub struct BackendPool {
   pub addresses: Vec<String>,
   pub strategy: Box<dyn LoadBalancingStrategy>,
   pub config: BackendPoolConfig,
-  pub client: Arc<Client<HttpConnector, Body>>,
-  pub chain: Arc<RequestHandlerChain>,
+  pub client: Client<HttpConnector, Body>,
+  pub chain: RequestHandlerChain,
 }
 
 impl PartialEq for BackendPool {
@@ -86,8 +86,8 @@ impl BackendPool {
       addresses,
       strategy,
       config,
-      client: Arc::new(Client::new()),
-      chain: Arc::new(chain),
+      client: Client::new(),
+      chain,
     }
   }
 }
@@ -155,9 +155,14 @@ impl Service<Request<Body>> for LoadBalanceService {
       Some(pool) if self.matches_pool_config(&pool.config) => {
         let client_address = self.client_address;
         Box::pin(async move {
-          let context = LoadBalancingContext { client_address, pool };
-          let result =
-            load_balancing::handle_request(request, &context.pool.strategy, &context.pool.chain, &context).await;
+          let context = LoadBalancingContext {
+            client_address: &client_address,
+            backend_addresses: &pool.addresses,
+          };
+          let backend = pool.strategy.select_backend(&request, &context);
+          let result = backend
+            .forward_request(request, &pool.chain, &context, &pool.client)
+            .await;
           Ok(result)
         })
       }

@@ -1,4 +1,5 @@
 use crate::{
+  http_client::StrategyNotifyHttpConnector,
   listeners::RemoteAddress,
   load_balancing::{LoadBalancingContext, LoadBalancingStrategy},
   middleware::RequestHandlerChain,
@@ -6,7 +7,6 @@ use crate::{
 use futures::Future;
 use futures::TryFutureExt;
 use hyper::{
-  client::HttpConnector,
   server::accept::Accept,
   service::{make_service_fn, Service},
   Body, Client, Request, Response, Server, StatusCode,
@@ -18,6 +18,8 @@ use std::{
   pin::Pin,
   sync::Arc,
   task::{Context, Poll},
+  time::Duration,
+  usize,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -57,38 +59,81 @@ pub enum BackendPoolConfig {
   },
 }
 
-#[derive(Debug)]
-pub struct BackendPool {
-  pub host: String,
-  pub addresses: Vec<String>,
-  pub strategy: Box<dyn LoadBalancingStrategy>,
-  pub config: BackendPoolConfig,
-  pub client: Client<HttpConnector, Body>,
-  pub chain: RequestHandlerChain,
+pub struct BackendPoolBuilder {
+  host: String,
+  addresses: Vec<String>,
+  strategy: Box<dyn LoadBalancingStrategy>,
+  config: BackendPoolConfig,
+  chain: RequestHandlerChain,
+  pool_idle_timeout: Option<Duration>,
+  pool_max_idle_per_host: Option<usize>,
 }
 
-impl PartialEq for BackendPool {
-  fn eq(&self, other: &Self) -> bool {
-    self.host.eq(other.host.as_str())
-  }
-}
-
-impl BackendPool {
+impl BackendPoolBuilder {
   pub fn new(
     host: String,
     addresses: Vec<String>,
     strategy: Box<dyn LoadBalancingStrategy>,
     config: BackendPoolConfig,
     chain: RequestHandlerChain,
-  ) -> BackendPool {
-    BackendPool {
+  ) -> BackendPoolBuilder {
+    BackendPoolBuilder {
       host,
       addresses,
       strategy,
       config,
-      client: Client::new(),
       chain,
+      pool_idle_timeout: None,
+      pool_max_idle_per_host: None,
     }
+  }
+
+  pub fn pool_idle_timeout(&mut self, duration: Duration) -> &BackendPoolBuilder {
+    self.pool_idle_timeout = Some(duration);
+    self
+  }
+
+  pub fn pool_max_idle_per_host(&mut self, max_idle: usize) -> &BackendPoolBuilder {
+    self.pool_max_idle_per_host = Some(max_idle);
+    self
+  }
+
+  pub fn build(self) -> BackendPool {
+    let mut client_builder = Client::builder();
+    if let Some(pool_idle_timeout) = self.pool_idle_timeout {
+      client_builder.pool_idle_timeout(pool_idle_timeout);
+    }
+    if let Some(pool_max_idle_per_host) = self.pool_max_idle_per_host {
+      client_builder.pool_max_idle_per_host(pool_max_idle_per_host);
+    }
+
+    let strategy = Arc::new(self.strategy);
+    let client: Client<_, Body> = client_builder.build(StrategyNotifyHttpConnector::new(strategy.clone()));
+
+    BackendPool {
+      host: self.host,
+      addresses: self.addresses,
+      strategy,
+      config: self.config,
+      chain: self.chain,
+      client,
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct BackendPool {
+  pub host: String,
+  pub addresses: Vec<String>,
+  pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
+  pub config: BackendPoolConfig,
+  pub client: Client<StrategyNotifyHttpConnector, Body>,
+  pub chain: RequestHandlerChain,
+}
+
+impl PartialEq for BackendPool {
+  fn eq(&self, other: &Self) -> bool {
+    self.host.eq(other.host.as_str())
   }
 }
 
@@ -125,7 +170,7 @@ impl LoadBalanceService {
       .backend_pools
       .iter()
       .find(|pool| pool.host.as_str() == host_header)
-      .map(|pool| pool.clone())
+      .cloned()
   }
 
   fn matches_pool_config(&self, config: &BackendPoolConfig) -> bool {
@@ -157,7 +202,7 @@ impl Service<Request<Body>> for LoadBalanceService {
         Box::pin(async move {
           let context = LoadBalancingContext {
             client_address: &client_address,
-            backend_addresses: &pool.addresses,
+            backend_addresses: &mut pool.addresses.clone(),
           };
           let backend = pool.strategy.select_backend(&request, &context);
           let result = backend
@@ -181,13 +226,16 @@ mod tests {
       request_https,
       client_address: "127.0.0.1:3000".parse().unwrap(),
       shared_data: Arc::new(SharedData {
-        backend_pools: vec![Arc::new(BackendPool::new(
-          host,
-          vec!["127.0.0.1:8084".into()],
-          Box::new(Random::new()),
-          BackendPoolConfig::HttpConfig {},
-          RequestHandlerChain::Empty,
-        ))],
+        backend_pools: vec![Arc::new(
+          BackendPoolBuilder::new(
+            host,
+            vec!["127.0.0.1:8084".into()],
+            Box::new(Random::new()),
+            BackendPoolConfig::HttpConfig {},
+            RequestHandlerChain::Empty,
+          )
+          .build(),
+        )],
       }),
     }
   }

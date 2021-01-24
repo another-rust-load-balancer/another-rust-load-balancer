@@ -33,7 +33,7 @@ mod tests {
     let request = Request::builder().body(Body::empty()).unwrap();
     let context = LoadBalancingContext {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
-      backend_addresses: &["127.0.0.1:1".into(), "127.0.0.1:2".into()],
+      backend_addresses: &mut ["127.0.0.1:1".into(), "127.0.0.1:2".into()],
     };
     let strategy = IPHash::new();
 
@@ -49,7 +49,7 @@ mod tests {
     let request_1 = Request::builder().body(Body::empty()).unwrap();
     let context_1 = LoadBalancingContext {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
-      backend_addresses: &[
+      backend_addresses: &mut [
         "127.0.0.1:1".into(),
         "127.0.0.1:2".into(),
         "127.0.0.1:3".into(),
@@ -60,7 +60,7 @@ mod tests {
     let request_2 = Request::builder().body(Body::empty()).unwrap();
     let context_2 = LoadBalancingContext {
       client_address: &"192.168.0.4:3000".parse().unwrap(),
-      backend_addresses: &vec![
+      backend_addresses: &mut [
         "127.0.0.1:1".into(),
         "127.0.0.1:2".into(),
         "127.0.0.1:3".into(),

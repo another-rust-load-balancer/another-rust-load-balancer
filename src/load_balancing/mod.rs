@@ -1,15 +1,24 @@
-use crate::middleware::{RequestHandlerChain, RequestHandlerContext};
+use crate::{
+  http_client::StrategyNotifyHttpConnector,
+  middleware::{RequestHandlerChain, RequestHandlerContext},
+};
 use async_trait::async_trait;
-use hyper::{client::HttpConnector, Body, Client, Request, Response, Uri};
+use hyper::{Body, Client, Request, Response, Uri};
 use std::{convert::identity, net::SocketAddr};
 
 pub mod ip_hash;
+pub mod least_connection;
 pub mod random;
 pub mod round_robin;
 pub mod sticky_cookie;
 
 #[async_trait]
 pub trait LoadBalancingStrategy: Send + Sync + std::fmt::Debug {
+  /// called when a new TCP connection to a backend server opened
+  fn on_tcp_open(&self, _remote: &Uri) {}
+
+  /// called when an existing backend TCP connection is closed
+  fn on_tcp_close(&self, _remote: &Uri) {}
   fn select_backend<'l>(&'l self, request: &Request<Body>, context: &'l LoadBalancingContext) -> RequestForwarder;
 }
 
@@ -24,7 +33,7 @@ pub struct RequestForwarder<'l> {
 }
 
 impl<'l> RequestForwarder<'l> {
-  fn new<'n>(address: &'n str) -> RequestForwarder<'n> {
+  fn new(address: &str) -> RequestForwarder {
     RequestForwarder::new_with_response_mapper(address, identity)
   }
 
@@ -53,7 +62,7 @@ impl<'l> RequestForwarder<'l> {
     request: Request<Body>,
     chain: &RequestHandlerChain,
     context: &LoadBalancingContext<'_>,
-    client: &Client<HttpConnector, Body>,
+    client: &Client<StrategyNotifyHttpConnector, Body>,
   ) -> Response<Body> {
     let context = RequestHandlerContext {
       client_address: context.client_address,

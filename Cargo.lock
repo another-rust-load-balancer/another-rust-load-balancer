@@ -47,6 +47,7 @@ dependencies = [
  "log",
  "log4rs",
  "notify",
+ "pin-project 1.0.2",
  "rand",
  "serde",
  "tokio",

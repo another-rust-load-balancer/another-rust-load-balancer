@@ -8,6 +8,7 @@ use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
 
 mod configuration;
+mod http_client;
 mod listeners;
 mod load_balancing;
 mod logging;

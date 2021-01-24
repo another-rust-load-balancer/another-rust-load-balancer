@@ -34,7 +34,7 @@ mod tests {
     let address = "127.0.0.1:1";
     let context = LoadBalancingContext {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
-      backend_addresses: &[address.into()],
+      backend_addresses: &mut [address.into()],
     };
     let strategy = RoundRobin::new();
 
@@ -50,7 +50,7 @@ mod tests {
     let address_2 = "127.0.0.1:2";
     let context = LoadBalancingContext {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
-      backend_addresses: &[address_1.into(), address_2.into()],
+      backend_addresses: &mut [address_1.into(), address_2.into()],
     };
     let strategy = RoundRobin::new();
 

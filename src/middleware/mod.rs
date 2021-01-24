@@ -1,6 +1,6 @@
-use crate::server::bad_gateway;
+use crate::{http_client::StrategyNotifyHttpConnector, server::bad_gateway};
 use async_trait::async_trait;
-use hyper::{client::HttpConnector, Body, Client, Request, Response, Uri};
+use hyper::{Body, Client, Request, Response, Uri};
 use log::error;
 use std::net::SocketAddr;
 
@@ -9,7 +9,7 @@ pub mod compression;
 pub struct RequestHandlerContext<'l> {
   pub client_address: &'l SocketAddr,
   pub backend_uri: Uri,
-  pub client: &'l Client<HttpConnector, Body>,
+  pub client: &'l Client<StrategyNotifyHttpConnector, Body>,
 }
 
 #[derive(Debug)]

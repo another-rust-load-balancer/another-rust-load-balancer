@@ -1,4 +1,5 @@
 use crate::{
+  backend_pool_matcher::BackendPoolMatcher,
   http_client::StrategyNotifyHttpConnector,
   listeners::RemoteAddress,
   load_balancing::{LoadBalancingContext, LoadBalancingStrategy},
@@ -54,13 +55,14 @@ where
 pub enum BackendPoolConfig {
   HttpConfig {},
   HttpsConfig {
+    host: String,
     certificate_path: String,
     private_key_path: String,
   },
 }
 
 pub struct BackendPoolBuilder {
-  host: String,
+  matcher: BackendPoolMatcher,
   addresses: Vec<String>,
   strategy: Box<dyn LoadBalancingStrategy>,
   config: BackendPoolConfig,
@@ -71,14 +73,14 @@ pub struct BackendPoolBuilder {
 
 impl BackendPoolBuilder {
   pub fn new(
-    host: String,
+    matcher: BackendPoolMatcher,
     addresses: Vec<String>,
     strategy: Box<dyn LoadBalancingStrategy>,
     config: BackendPoolConfig,
     chain: RequestHandlerChain,
   ) -> BackendPoolBuilder {
     BackendPoolBuilder {
-      host,
+      matcher,
       addresses,
       strategy,
       config,
@@ -111,7 +113,7 @@ impl BackendPoolBuilder {
     let client: Client<_, Body> = client_builder.build(StrategyNotifyHttpConnector::new(strategy.clone()));
 
     BackendPool {
-      host: self.host,
+      matcher: self.matcher,
       addresses: self.addresses,
       strategy,
       config: self.config,
@@ -123,7 +125,7 @@ impl BackendPoolBuilder {
 
 #[derive(Debug)]
 pub struct BackendPool {
-  pub host: String,
+  pub matcher: BackendPoolMatcher,
   pub addresses: Vec<String>,
   pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
   pub config: BackendPoolConfig,
@@ -133,7 +135,7 @@ pub struct BackendPool {
 
 impl PartialEq for BackendPool {
   fn eq(&self, other: &Self) -> bool {
-    self.host.eq(other.host.as_str())
+    self.matcher.eq(&other.matcher)
   }
 }
 
@@ -162,14 +164,12 @@ pub fn bad_gateway() -> Response<Body> {
 }
 
 impl LoadBalanceService {
-  fn pool_by_req<T>(&self, client_request: &Request<T>) -> Option<Arc<BackendPool>> {
-    let host_header = client_request.headers().get("host")?;
-
+  fn pool_by_req(&self, client_request: &Request<Body>) -> Option<Arc<BackendPool>> {
     self
       .shared_data
       .backend_pools
       .iter()
-      .find(|pool| pool.host.as_str() == host_header)
+      .find(|pool| pool.matcher.matches(client_request))
       .cloned()
   }
 
@@ -228,7 +228,7 @@ mod tests {
       shared_data: Arc::new(SharedData {
         backend_pools: vec![Arc::new(
           BackendPoolBuilder::new(
-            host,
+            BackendPoolMatcher::Host(host),
             vec!["127.0.0.1:8084".into()],
             Box::new(Random::new()),
             BackendPoolConfig::HttpConfig {},
@@ -244,7 +244,10 @@ mod tests {
   fn pool_by_req_no_matching_pool() {
     let service = generate_test_service("whoami.localhost".into(), false);
 
-    let request = Request::builder().header("host", "whoami.de").body(()).unwrap();
+    let request = Request::builder()
+      .header("host", "whoami.de")
+      .body(Body::empty())
+      .unwrap();
 
     let pool = service.pool_by_req(&request);
 
@@ -253,7 +256,10 @@ mod tests {
   #[test]
   fn pool_by_req_matching_pool() {
     let service = generate_test_service("whoami.localhost".into(), false);
-    let request = Request::builder().header("host", "whoami.localhost").body(()).unwrap();
+    let request = Request::builder()
+      .header("host", "whoami.localhost")
+      .body(Body::empty())
+      .unwrap();
 
     let pool = service.pool_by_req(&request);
 
@@ -266,6 +272,7 @@ mod tests {
     let https_service = generate_test_service("whoami.localhost".into(), true);
     let http_service = generate_test_service("whoami.localhost".into(), false);
     let https_config = BackendPoolConfig::HttpsConfig {
+      host: "whoami.localhost".into(),
       certificate_path: "some/certificate/path".into(),
       private_key_path: "some/private/key/path".into(),
     };

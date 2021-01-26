@@ -1,12 +1,10 @@
-use crate::load_balancing::ip_hash::IPHash;
-use crate::load_balancing::random::Random;
-use crate::load_balancing::round_robin::RoundRobin;
-use crate::load_balancing::sticky_cookie::StickyCookie;
 use crate::load_balancing::LoadBalancingStrategy;
+use crate::load_balancing::{ip_hash::IPHash, least_connection::LeastConnection};
+use crate::load_balancing::{round_robin::RoundRobin, sticky_cookie::StickyCookie};
 use crate::middleware::compression::Compression;
-use crate::middleware::sticky_cookie_companion::StickyCookieCompanion;
 use crate::middleware::{RequestHandler, RequestHandlerChain};
 use crate::server::{BackendPool, BackendPoolConfig, SharedData};
+use crate::{load_balancing::random::Random, server::BackendPoolBuilder};
 use futures::Future;
 use log::{error, info, warn};
 use notify::{watcher, DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
@@ -22,6 +20,7 @@ use std::sync::RwLock;
 pub enum BackendConfigProtocol {
   Http {},
   Https {
+    host: String,
     certificate_path: String,
     private_key_path: String,
   },
@@ -36,12 +35,6 @@ pub enum StickyCookieSameSite {
 
 #[derive(Debug, Deserialize, PartialEq)]
 enum BackendConfigMiddleware {
-  StickyCookieCompanion {
-    cookie_name: String,
-    http_only: bool,
-    secure: bool,
-    same_site: StickyCookieSameSite,
-  },
   Compression {},
 }
 
@@ -56,16 +49,24 @@ enum BackendConfigLBStrategy {
   },
   Random {},
   IPHash {},
+  LeastConnection {},
   RoundRobin {},
 }
 
 #[derive(Debug, Deserialize)]
 struct BackendConfigEntry {
   addresses: Vec<String>,
-  host: String,
+  matcher: String,
   strategy: BackendConfigLBStrategy,
   protocol: BackendConfigProtocol,
   chain: Vec<BackendConfigMiddleware>,
+  client: Option<BackendClientConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BackendClientConfig {
+  pool_idle_timeout: Option<Duration>,
+  pool_max_idle_per_host: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,9 +79,11 @@ impl From<BackendConfigProtocol> for BackendPoolConfig {
     match other {
       BackendConfigProtocol::Http {} => BackendPoolConfig::HttpConfig {},
       BackendConfigProtocol::Https {
+        host,
         certificate_path,
         private_key_path,
       } => BackendPoolConfig::HttpsConfig {
+        host,
         certificate_path,
         private_key_path,
       },
@@ -101,17 +104,6 @@ impl From<StickyCookieSameSite> for cookie::SameSite {
 impl From<BackendConfigMiddleware> for Box<dyn RequestHandler> {
   fn from(other: BackendConfigMiddleware) -> Self {
     match other {
-      BackendConfigMiddleware::StickyCookieCompanion {
-        cookie_name,
-        http_only,
-        secure,
-        same_site,
-      } => Box::new(StickyCookieCompanion::new(
-        cookie_name,
-        http_only,
-        secure,
-        same_site.into(),
-      )),
       BackendConfigMiddleware::Compression { .. } => Box::new(Compression {}),
     }
   }
@@ -152,18 +144,33 @@ impl From<BackendConfigLBStrategy> for Box<dyn LoadBalancingStrategy> {
       BackendConfigLBStrategy::Random {} => Box::new(Random::new()),
       BackendConfigLBStrategy::IPHash {} => Box::new(IPHash::new()),
       BackendConfigLBStrategy::RoundRobin {} => Box::new(RoundRobin::new()),
+      BackendConfigLBStrategy::LeastConnection {} => Box::new(LeastConnection::new()),
     }
   }
 }
 
 impl From<BackendConfigEntry> for BackendPool {
   fn from(other: BackendConfigEntry) -> Self {
-    let host = other.host;
+    // TODO: This conversion can fail, should we use TryFrom or wrap this in some kind of error?
+    let matcher = other.matcher.into();
     let addresses = other.addresses;
     let strategy = other.strategy.into();
     let config = other.protocol.into();
     let chain = other.chain.into();
-    BackendPool::new(host, addresses, strategy, config, chain)
+    let client = other.client;
+
+    let mut builder = BackendPoolBuilder::new(matcher, addresses, strategy, config, chain);
+    if let Some(client) = client {
+      if let Some(pool_idle_timeout) = client.pool_idle_timeout {
+        builder.pool_idle_timeout(pool_idle_timeout);
+      }
+
+      if let Some(pool_max_idle_per_host) = client.pool_max_idle_per_host {
+        builder.pool_max_idle_per_host(pool_max_idle_per_host);
+      }
+    }
+
+    builder.build()
   }
 }
 

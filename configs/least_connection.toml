@@ -1,0 +1,10 @@
+## Pool 1
+[[backend_pools]]
+host="Host('whoami.localhost')"
+addresses=["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"]
+strategy={ LeastConnection = { } }
+protocol = { Http = {} }
+chain = [
+    { Compression = {} },
+]
+client = { pool_max_idle_per_host = 0 }

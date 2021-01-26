@@ -8,7 +8,9 @@ use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
 use std::sync::RwLock;
 
+mod backend_pool_matcher;
 mod configuration;
+mod http_client;
 mod listeners;
 mod load_balancing;
 mod logging;
@@ -66,11 +68,12 @@ async fn listen_for_https_request(shared_data: Arc<RwLock<Arc<SharedData>>>) -> 
   for pool in &data.backend_pools {
     match &pool.config {
       BackendPoolConfig::HttpsConfig {
+        host,
         certificate_path,
         private_key_path,
       } => tls::add_certificate(
         &mut cert_resolver,
-        pool.host.as_str(),
+        host.as_str(),
         Path::new(certificate_path.as_str()),
         Path::new(private_key_path.as_str()),
       ),

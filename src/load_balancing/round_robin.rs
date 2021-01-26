@@ -1,4 +1,4 @@
-use super::{LoadBalanceTarget, LoadBalancingContext, LoadBalancingStrategy};
+use super::{LoadBalancingContext, LoadBalancingStrategy, RequestForwarder};
 use hyper::{Body, Request};
 use std::sync::{Arc, Mutex};
 
@@ -16,64 +16,47 @@ impl RoundRobin {
 }
 
 impl LoadBalancingStrategy for RoundRobin {
-  fn resolve_address_index<'l>(
-    &'l self,
-    _request: &Request<Body>,
-    lb_context: &'l LoadBalancingContext,
-  ) -> LoadBalanceTarget {
+  fn select_backend<'l>(&'l self, _request: &Request<Body>, context: &'l LoadBalancingContext) -> RequestForwarder {
     let mut rrc_handle = self.rrc.lock().unwrap();
-    *rrc_handle = (*rrc_handle + 1) % lb_context.pool.addresses.len() as u32;
-    LoadBalanceTarget::new(*rrc_handle as usize)
+    *rrc_handle = (*rrc_handle + 1) % context.backend_addresses.len() as u32;
+    let address = &context.backend_addresses[*rrc_handle as usize];
+    RequestForwarder::new(address)
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    middleware::RequestHandlerChain,
-    server::{BackendPool, BackendPoolConfig},
-  };
-
   use super::*;
 
   #[test]
   pub fn round_robin_strategy_single_address() {
     let request = Request::builder().body(Body::empty()).unwrap();
+    let address = "127.0.0.1:1";
     let context = LoadBalancingContext {
-      client_address: "127.0.0.1:3000".parse().unwrap(),
-      pool: Arc::new(BackendPool::new(
-        "whoami.localhost".into(),
-        vec!["127.0.0.1:1".into()],
-        Box::new(RoundRobin::new()),
-        BackendPoolConfig::HttpConfig {},
-        RequestHandlerChain::Empty,
-      )),
+      client_address: &"127.0.0.1:3000".parse().unwrap(),
+      backend_addresses: &mut [address.into()],
     };
     let strategy = RoundRobin::new();
 
-    assert_eq!(strategy.resolve_address_index(&request, &context).index, 0);
-    assert_eq!(strategy.resolve_address_index(&request, &context).index, 0);
-    assert_eq!(strategy.resolve_address_index(&request, &context).index, 0);
+    assert_eq!(strategy.select_backend(&request, &context).address, address);
+    assert_eq!(strategy.select_backend(&request, &context).address, address);
+    assert_eq!(strategy.select_backend(&request, &context).address, address);
   }
 
   #[test]
   pub fn round_robin_strategy_multiple_addresses() {
     let request = Request::builder().body(Body::empty()).unwrap();
+    let address_1 = "127.0.0.1:1";
+    let address_2 = "127.0.0.1:2";
     let context = LoadBalancingContext {
-      client_address: "127.0.0.1:3000".parse().unwrap(),
-      pool: Arc::new(BackendPool::new(
-        "whoami.localhost".into(),
-        vec!["127.0.0.1:1".into(), "127.0.0.1:2".into()],
-        Box::new(RoundRobin::new()),
-        BackendPoolConfig::HttpConfig {},
-        RequestHandlerChain::Empty,
-      )),
+      client_address: &"127.0.0.1:3000".parse().unwrap(),
+      backend_addresses: &mut [address_1.into(), address_2.into()],
     };
     let strategy = RoundRobin::new();
 
-    assert_eq!(strategy.resolve_address_index(&request, &context).index, 1);
-    assert_eq!(strategy.resolve_address_index(&request, &context).index, 0);
-    assert_eq!(strategy.resolve_address_index(&request, &context).index, 1);
-    assert_eq!(strategy.resolve_address_index(&request, &context).index, 0);
+    assert_eq!(strategy.select_backend(&request, &context).address, address_2);
+    assert_eq!(strategy.select_backend(&request, &context).address, address_1);
+    assert_eq!(strategy.select_backend(&request, &context).address, address_2);
+    assert_eq!(strategy.select_backend(&request, &context).address, address_1);
   }
 }

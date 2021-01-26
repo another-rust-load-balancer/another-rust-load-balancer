@@ -17,6 +17,7 @@ mod logging;
 mod middleware;
 mod server;
 mod tls;
+mod acme;
 
 const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:80";
 const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:443";
@@ -38,6 +39,7 @@ pub async fn main() -> Result<(), io::Error> {
     .get_matches();
   let backend_toml = matches.value_of("backend").unwrap().to_string();
 
+  acme::request_cert().unwrap();
   logging::initialize();
 
   let mut config = BackendConfigWatcher::new(backend_toml);

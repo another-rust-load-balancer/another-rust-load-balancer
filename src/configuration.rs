@@ -1,7 +1,6 @@
-use crate::load_balancing::round_robin::RoundRobin;
-use crate::load_balancing::sticky_cookie::StickyCookie;
 use crate::load_balancing::LoadBalancingStrategy;
 use crate::load_balancing::{ip_hash::IPHash, least_connection::LeastConnection};
+use crate::load_balancing::{round_robin::RoundRobin, sticky_cookie::StickyCookie};
 use crate::middleware::compression::Compression;
 use crate::middleware::{RequestHandler, RequestHandlerChain};
 use crate::server::{BackendPool, BackendPoolConfig, SharedData};
@@ -20,6 +19,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 pub enum BackendConfigProtocol {
   Http {},
   Https {
+    host: String,
     certificate_path: String,
     private_key_path: String,
   },
@@ -55,7 +55,7 @@ enum BackendConfigLBStrategy {
 #[derive(Debug, Deserialize)]
 struct BackendConfigEntry {
   addresses: Vec<String>,
-  host: String,
+  matcher: String,
   strategy: BackendConfigLBStrategy,
   protocol: BackendConfigProtocol,
   chain: Vec<BackendConfigMiddleware>,
@@ -78,9 +78,11 @@ impl From<BackendConfigProtocol> for BackendPoolConfig {
     match other {
       BackendConfigProtocol::Http {} => BackendPoolConfig::HttpConfig {},
       BackendConfigProtocol::Https {
+        host,
         certificate_path,
         private_key_path,
       } => BackendPoolConfig::HttpsConfig {
+        host,
         certificate_path,
         private_key_path,
       },
@@ -148,14 +150,15 @@ impl From<BackendConfigLBStrategy> for Box<dyn LoadBalancingStrategy> {
 
 impl From<BackendConfigEntry> for BackendPool {
   fn from(other: BackendConfigEntry) -> Self {
-    let host = other.host;
+    // TODO: This conversion can fail, should we use TryFrom or wrap this in some kind of error?
+    let matcher = other.matcher.into();
     let addresses = other.addresses;
     let strategy = other.strategy.into();
     let config = other.protocol.into();
     let chain = other.chain.into();
     let client = other.client;
 
-    let mut builder = BackendPoolBuilder::new(host, addresses, strategy, config, chain);
+    let mut builder = BackendPoolBuilder::new(matcher, addresses, strategy, config, chain);
     if let Some(client) = client {
       if let Some(pool_idle_timeout) = client.pool_idle_timeout {
         builder.pool_idle_timeout(pool_idle_timeout);

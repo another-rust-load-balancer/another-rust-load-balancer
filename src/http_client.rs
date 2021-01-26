@@ -106,7 +106,7 @@ impl Service<Uri> for StrategyNotifyHttpConnector {
       match self_.inner.call(req).await {
         Ok(stream) => {
           self_.strategy.on_tcp_open(&req_);
-          Ok(StrategyNotifyStream::new(stream, req_.clone(), self_.strategy))
+          Ok(StrategyNotifyStream::new(stream, req_, self_.strategy))
         }
         Err(e) => Err(e.into()),
       }

@@ -6,7 +6,7 @@ use std::io;
 use std::{path::Path, sync::Arc};
 use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
-use std::sync::RwLock;
+use arc_swap::ArcSwap;
 
 mod backend_pool_matcher;
 mod configuration;
@@ -47,7 +47,7 @@ pub async fn main() -> Result<(), io::Error> {
   Ok(())
 }
 
-pub async fn start_listening(shared_date: Arc<RwLock<Arc<SharedData>>>) -> Result<(), io::Error> {
+pub async fn start_listening(shared_date: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
   try_join!(
     listen_for_http_request(shared_date.clone()),
     listen_for_https_request(shared_date.clone())
@@ -55,18 +55,18 @@ pub async fn start_listening(shared_date: Arc<RwLock<Arc<SharedData>>>) -> Resul
   Ok(())
 }
 
-async fn listen_for_http_request(shared_data: Arc<RwLock<Arc<SharedData>>>) -> Result<(), io::Error> {
+async fn listen_for_http_request(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
   let http = listeners::Http {};
   let acceptor = http.produce_acceptor(LOCAL_HTTP_ADDRESS).await?;
 
   server::create(acceptor, shared_data, false).await
 }
 
-async fn listen_for_https_request(shared_data: Arc<RwLock<Arc<SharedData>>>) -> Result<(), io::Error> {
+async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
   let mut tls_config = ServerConfig::new(NoClientAuth::new());
   let mut cert_resolver = ResolvesServerCertUsingSNI::new();
 
-  let data = (*shared_data.read().unwrap()).clone();
+  let data = shared_data.load();
   for pool in &data.backend_pools {
     match &pool.config {
       BackendPoolConfig::HttpsConfig {

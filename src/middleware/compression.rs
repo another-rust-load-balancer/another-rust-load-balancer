@@ -26,7 +26,7 @@ impl RequestHandler for Compression {
     &self,
     request: Request<Body>,
     next: &RequestHandlerChain,
-    context: &RequestHandlerContext,
+    context: &RequestHandlerContext<'_>,
   ) -> Result<Response<Body>, Response<Body>> {
     let encoding = get_preferred_encoding(request.headers());
     next.handle_request(request, context).await.map(|response| {

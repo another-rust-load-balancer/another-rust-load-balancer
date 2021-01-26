@@ -20,9 +20,13 @@ hyper-rustls = "0.22"
 log = "0.4"
 log4rs = "1.0"
 notify = "4.0"
+pin-project = "1.0"
+pom = "3.2"
 rand = "0.8"
+regex = "1.4"
 serde = { version = "1.0", features = ["derive"] }
 tokio = {version = "1.0", features = ["full"] }
 tokio-rustls = "0.22"
 tokio-util = { version = "0.6", features = ["full"] }
 toml = "0.5"
+url = "2.2"

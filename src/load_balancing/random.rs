@@ -1,4 +1,4 @@
-use super::{LoadBalanceTarget, LoadBalancingContext, LoadBalancingStrategy};
+use super::{LoadBalancingContext, LoadBalancingStrategy, RequestForwarder};
 use async_trait::async_trait;
 use hyper::{Body, Request};
 use rand::{thread_rng, Rng};
@@ -14,13 +14,10 @@ impl Random {
 
 #[async_trait]
 impl LoadBalancingStrategy for Random {
-  fn resolve_address_index<'l>(
-    &'l self,
-    _request: &Request<Body>,
-    context: &'l LoadBalancingContext,
-  ) -> LoadBalanceTarget {
+  fn select_backend<'l>(&'l self, _request: &Request<Body>, context: &'l LoadBalancingContext) -> RequestForwarder {
     let mut rng = thread_rng();
-    let index = rng.gen_range(0..context.pool.addresses.len());
-    LoadBalanceTarget::new(index)
+    let index = rng.gen_range(0..context.backend_addresses.len());
+    let address = &context.backend_addresses[index];
+    RequestForwarder::new(address)
   }
 }

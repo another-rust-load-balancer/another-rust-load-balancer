@@ -1,12 +1,13 @@
 use crate::{
+  backend_pool_matcher::BackendPoolMatcher,
+  http_client::StrategyNotifyHttpConnector,
   listeners::RemoteAddress,
-  load_balancing::{self, LoadBalancingContext, LoadBalancingStrategy},
+  load_balancing::{LoadBalancingContext, LoadBalancingStrategy},
   middleware::RequestHandlerChain,
 };
 use futures::Future;
 use futures::TryFutureExt;
 use hyper::{
-  client::HttpConnector,
   server::accept::Accept,
   service::{make_service_fn, Service},
   Body, Client, Request, Response, Server, StatusCode,
@@ -18,6 +19,8 @@ use std::{
   pin::Pin,
   sync::Arc,
   task::{Context, Poll},
+  time::Duration,
+  usize,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use std::sync::RwLock;
@@ -53,43 +56,87 @@ where
 pub enum BackendPoolConfig {
   HttpConfig {},
   HttpsConfig {
+    host: String,
     certificate_path: String,
     private_key_path: String,
   },
 }
 
-#[derive(Debug)]
-pub struct BackendPool {
-  pub host: String,
-  pub addresses: Vec<String>,
-  pub strategy: Box<dyn LoadBalancingStrategy>,
-  pub config: BackendPoolConfig,
-  pub client: Arc<Client<HttpConnector, Body>>,
-  pub chain: Arc<RequestHandlerChain>,
+pub struct BackendPoolBuilder {
+  matcher: BackendPoolMatcher,
+  addresses: Vec<String>,
+  strategy: Box<dyn LoadBalancingStrategy>,
+  config: BackendPoolConfig,
+  chain: RequestHandlerChain,
+  pool_idle_timeout: Option<Duration>,
+  pool_max_idle_per_host: Option<usize>,
 }
 
-impl PartialEq for BackendPool {
-  fn eq(&self, other: &Self) -> bool {
-    self.host.eq(other.host.as_str())
-  }
-}
-
-impl BackendPool {
+impl BackendPoolBuilder {
   pub fn new(
-    host: String,
+    matcher: BackendPoolMatcher,
     addresses: Vec<String>,
     strategy: Box<dyn LoadBalancingStrategy>,
     config: BackendPoolConfig,
     chain: RequestHandlerChain,
-  ) -> BackendPool {
-    BackendPool {
-      host,
+  ) -> BackendPoolBuilder {
+    BackendPoolBuilder {
+      matcher,
       addresses,
       strategy,
       config,
-      client: Arc::new(Client::new()),
-      chain: Arc::new(chain),
+      chain,
+      pool_idle_timeout: None,
+      pool_max_idle_per_host: None,
     }
+  }
+
+  pub fn pool_idle_timeout(&mut self, duration: Duration) -> &BackendPoolBuilder {
+    self.pool_idle_timeout = Some(duration);
+    self
+  }
+
+  pub fn pool_max_idle_per_host(&mut self, max_idle: usize) -> &BackendPoolBuilder {
+    self.pool_max_idle_per_host = Some(max_idle);
+    self
+  }
+
+  pub fn build(self) -> BackendPool {
+    let mut client_builder = Client::builder();
+    if let Some(pool_idle_timeout) = self.pool_idle_timeout {
+      client_builder.pool_idle_timeout(pool_idle_timeout);
+    }
+    if let Some(pool_max_idle_per_host) = self.pool_max_idle_per_host {
+      client_builder.pool_max_idle_per_host(pool_max_idle_per_host);
+    }
+
+    let strategy = Arc::new(self.strategy);
+    let client: Client<_, Body> = client_builder.build(StrategyNotifyHttpConnector::new(strategy.clone()));
+
+    BackendPool {
+      matcher: self.matcher,
+      addresses: self.addresses,
+      strategy,
+      config: self.config,
+      chain: self.chain,
+      client,
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct BackendPool {
+  pub matcher: BackendPoolMatcher,
+  pub addresses: Vec<String>,
+  pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
+  pub config: BackendPoolConfig,
+  pub client: Client<StrategyNotifyHttpConnector, Body>,
+  pub chain: RequestHandlerChain,
+}
+
+impl PartialEq for BackendPool {
+  fn eq(&self, other: &Self) -> bool {
+    self.matcher.eq(&other.matcher)
   }
 }
 
@@ -118,15 +165,13 @@ pub fn bad_gateway() -> Response<Body> {
 }
 
 impl LoadBalanceService {
-  fn pool_by_req<T>(&self, client_request: &Request<T>) -> Option<Arc<BackendPool>> {
-    let host_header = client_request.headers().get("host")?;
-
+  fn pool_by_req(&self, client_request: &Request<Body>) -> Option<Arc<BackendPool>> {
     self
       .shared_data
       .backend_pools
       .iter()
-      .find(|pool| pool.host.as_str() == host_header)
-      .map(|pool| pool.clone())
+      .find(|pool| pool.matcher.matches(client_request))
+      .cloned()
   }
 
   fn matches_pool_config(&self, config: &BackendPoolConfig) -> bool {
@@ -156,9 +201,14 @@ impl Service<Request<Body>> for LoadBalanceService {
       Some(pool) if self.matches_pool_config(&pool.config) => {
         let client_address = self.client_address;
         Box::pin(async move {
-          let context = LoadBalancingContext { client_address, pool };
-          let result =
-            load_balancing::handle_request(request, &context.pool.strategy, &context.pool.chain, &context).await;
+          let context = LoadBalancingContext {
+            client_address: &client_address,
+            backend_addresses: &mut pool.addresses.clone(),
+          };
+          let backend = pool.strategy.select_backend(&request, &context);
+          let result = backend
+            .forward_request(request, &pool.chain, &context, &pool.client)
+            .await;
           Ok(result)
         })
       }
@@ -177,13 +227,16 @@ mod tests {
       request_https,
       client_address: "127.0.0.1:3000".parse().unwrap(),
       shared_data: Arc::new(SharedData {
-        backend_pools: vec![Arc::new(BackendPool::new(
-          host,
-          vec!["127.0.0.1:8084".into()],
-          Box::new(Random::new()),
-          BackendPoolConfig::HttpConfig {},
-          RequestHandlerChain::Empty,
-        ))],
+        backend_pools: vec![Arc::new(
+          BackendPoolBuilder::new(
+            BackendPoolMatcher::Host(host),
+            vec!["127.0.0.1:8084".into()],
+            Box::new(Random::new()),
+            BackendPoolConfig::HttpConfig {},
+            RequestHandlerChain::Empty,
+          )
+          .build(),
+        )],
       }),
     }
   }
@@ -192,7 +245,10 @@ mod tests {
   fn pool_by_req_no_matching_pool() {
     let service = generate_test_service("whoami.localhost".into(), false);
 
-    let request = Request::builder().header("host", "whoami.de").body(()).unwrap();
+    let request = Request::builder()
+      .header("host", "whoami.de")
+      .body(Body::empty())
+      .unwrap();
 
     let pool = service.pool_by_req(&request);
 
@@ -201,7 +257,10 @@ mod tests {
   #[test]
   fn pool_by_req_matching_pool() {
     let service = generate_test_service("whoami.localhost".into(), false);
-    let request = Request::builder().header("host", "whoami.localhost").body(()).unwrap();
+    let request = Request::builder()
+      .header("host", "whoami.localhost")
+      .body(Body::empty())
+      .unwrap();
 
     let pool = service.pool_by_req(&request);
 
@@ -214,6 +273,7 @@ mod tests {
     let https_service = generate_test_service("whoami.localhost".into(), true);
     let http_service = generate_test_service("whoami.localhost".into(), false);
     let https_config = BackendPoolConfig::HttpsConfig {
+      host: "whoami.localhost".into(),
       certificate_path: "some/certificate/path".into(),
       private_key_path: "some/private/key/path".into(),
     };

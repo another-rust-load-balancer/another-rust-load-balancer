@@ -4,6 +4,7 @@ use gethostname::gethostname;
 use hyper::{header::HeaderValue, Body, Client, Request, Response, Uri};
 use std::net::SocketAddr;
 
+pub mod authentication;
 pub mod compression;
 pub mod https_redirector;
 pub mod maxbodysize;

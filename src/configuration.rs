@@ -14,7 +14,7 @@ use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use std::sync::RwLock;
+use arc_swap::ArcSwap;
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 pub enum BackendConfigProtocol {
@@ -252,7 +252,7 @@ impl BackendConfigWatcher {
 
   pub async fn watch_config_and_apply<F, Fut, Out>(&mut self, task_fn: F) -> !
   where
-    F: Fn(Arc<RwLock<Arc<SharedData>>>) -> Fut,
+    F: Fn(Arc<ArcSwap<SharedData>>) -> Fut,
     Fut: Future<Output = Out> + 'static + Send,
     Out: 'static + Send
   {
@@ -268,13 +268,12 @@ impl BackendConfigWatcher {
     };
 
     let shared_data: SharedData = initial_config.into();
-    let config = Arc::new(RwLock::new(Arc::new(shared_data)));
+    let config = Arc::new(ArcSwap::from(Arc::new(shared_data)));
     tokio::spawn(task_fn(config.clone()));
 
     loop {
         let new_config = cr.recv().await.unwrap();
-        let mut config_lock = config.write().unwrap();
-        *config_lock = Arc::new(new_config.into());
+        config.store(Arc::new(new_config.into()));
     }
   }
 }

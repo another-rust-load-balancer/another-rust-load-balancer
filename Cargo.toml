@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 acme-lib = "0.8.1"
 arc-swap = "1.2.0"
-acme-lib = "0.8.1"
 async-stream = "0.3"
 async-trait = "0.1"
 async-compression = { version = "0.3", features = ["brotli", "deflate", "gzip", "tokio"] }

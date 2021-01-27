@@ -18,7 +18,6 @@ use log::debug;
 use std::{
   io,
   net::SocketAddr,
-  ops::Deref,
   pin::Pin,
   sync::Arc,
   task::{Context, Poll},
@@ -213,7 +212,7 @@ impl Service<Request<Body>> for MainService {
             .addresses
             .clone()
             .into_iter()
-            .filter(|(_, healthiness)| healthiness.load_full().deref() == &Healthiness::Healthy)
+            .filter(|(_, healthiness)| healthiness.load().as_ref() == &Healthiness::Healthy)
             .map(|(address, _)| address)
             .collect();
 

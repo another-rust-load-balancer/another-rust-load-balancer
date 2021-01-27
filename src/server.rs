@@ -1,10 +1,12 @@
 use crate::{
   backend_pool_matcher::BackendPoolMatcher,
+  health::Healthiness,
   http_client::StrategyNotifyHttpConnector,
   listeners::RemoteAddress,
   load_balancing::{LoadBalancingContext, LoadBalancingStrategy},
   middleware::RequestHandlerChain,
 };
+use arc_swap::ArcSwap;
 use futures::Future;
 use futures::TryFutureExt;
 use hyper::{
@@ -16,6 +18,7 @@ use log::debug;
 use std::{
   io,
   net::SocketAddr,
+  ops::Deref,
   pin::Pin,
   sync::Arc,
   task::{Context, Poll},
@@ -23,9 +26,12 @@ use std::{
   usize,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
-use arc_swap::ArcSwap;
 
-pub async fn create<'a, I, IE, IO>(acceptor: I, shared_data: Arc<ArcSwap<SharedData>>, https: bool) -> Result<(), io::Error>
+pub async fn create<'a, I, IE, IO>(
+  acceptor: I,
+  shared_data: Arc<ArcSwap<SharedData>>,
+  https: bool,
+) -> Result<(), io::Error>
 where
   I: Accept<Conn = IO, Error = IE>,
   IE: Into<Box<dyn std::error::Error + Send + Sync>>,
@@ -64,7 +70,7 @@ pub enum BackendPoolConfig {
 
 pub struct BackendPoolBuilder {
   matcher: BackendPoolMatcher,
-  addresses: Vec<String>,
+  addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
   strategy: Box<dyn LoadBalancingStrategy>,
   config: BackendPoolConfig,
   chain: RequestHandlerChain,
@@ -75,7 +81,7 @@ pub struct BackendPoolBuilder {
 impl BackendPoolBuilder {
   pub fn new(
     matcher: BackendPoolMatcher,
-    addresses: Vec<String>,
+    addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
     strategy: Box<dyn LoadBalancingStrategy>,
     config: BackendPoolConfig,
     chain: RequestHandlerChain,
@@ -127,7 +133,7 @@ impl BackendPoolBuilder {
 #[derive(Debug)]
 pub struct BackendPool {
   pub matcher: BackendPoolMatcher,
-  pub addresses: Vec<String>,
+  pub addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
   pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
   pub config: BackendPoolConfig,
   pub client: Client<StrategyNotifyHttpConnector, Body>,
@@ -200,16 +206,32 @@ impl Service<Request<Body>> for LoadBalanceService {
     match self.pool_by_req(&request) {
       Some(pool) if self.matches_pool_config(&pool.config) => {
         let client_address = self.client_address;
+
         Box::pin(async move {
-          let context = LoadBalancingContext {
-            client_address: &client_address,
-            backend_addresses: &mut pool.addresses.clone(),
-          };
-          let backend = pool.strategy.select_backend(&request, &context);
-          let result = backend
-            .forward_request(request, &pool.chain, &context, &pool.client)
-            .await;
-          Ok(result)
+          // clone, filter, map, LoadBalancingContext:backend_addresses
+          let healthy_addresses: Vec<String> = pool
+            .addresses
+            .clone()
+            .into_iter()
+            .filter(|(_, healthiness)| healthiness.load_full().deref() == &Healthiness::Healthy)
+            .map(|(address, _)| address)
+            .collect();
+
+          // we don't have any healthy addresses, so don't call load balancer strategy and abort early
+          // middlewares are also not running
+          if healthy_addresses.is_empty() {
+            Ok(bad_gateway())
+          } else {
+            let context = LoadBalancingContext {
+              client_address: &client_address,
+              backend_addresses: &healthy_addresses,
+            };
+            let backend = pool.strategy.select_backend(&request, &context);
+            let result = backend
+              .forward_request(request, &pool.chain, &context, &pool.client)
+              .await;
+            Ok(result)
+          }
         })
       }
       _ => Box::pin(async { Ok(not_found()) }),
@@ -230,7 +252,10 @@ mod tests {
         backend_pools: vec![Arc::new(
           BackendPoolBuilder::new(
             BackendPoolMatcher::Host(host),
-            vec!["127.0.0.1:8084".into()],
+            vec![(
+              "127.0.0.1:8084".into(),
+              Arc::new(ArcSwap::from_pointee(Healthiness::Healthy)),
+            )],
             Box::new(Random::new()),
             BackendPoolConfig::HttpConfig {},
             RequestHandlerChain::Empty,

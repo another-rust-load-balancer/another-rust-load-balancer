@@ -9,7 +9,7 @@ use std::convert::TryFrom;
 use std::{fmt, sync::Arc};
 use std::{ops::Deref, time::SystemTime};
 
-const CHECK_INTERVAL: i64 = 4;
+const CHECK_INTERVAL: i64 = 60;
 const SLOW_THRESHOLD: i64 = 100;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Healthiness {

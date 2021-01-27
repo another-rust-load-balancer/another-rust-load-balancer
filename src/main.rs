@@ -1,4 +1,5 @@
 use crate::configuration::BackendConfigWatcher;
+use arc_swap::ArcSwap;
 use clap::{App, Arg};
 use listeners::{AcceptorProducer, Https};
 use server::{BackendPoolConfig, SharedData};
@@ -6,10 +7,10 @@ use std::io;
 use std::{path::Path, sync::Arc};
 use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
-use arc_swap::ArcSwap;
 
 mod backend_pool_matcher;
 mod configuration;
+mod health;
 mod http_client;
 mod listeners;
 mod load_balancing;
@@ -49,9 +50,15 @@ pub async fn main() -> Result<(), io::Error> {
 
 pub async fn start_listening(shared_date: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
   try_join!(
+    start_health_watcher(shared_date.clone()),
     listen_for_http_request(shared_date.clone()),
     listen_for_https_request(shared_date.clone())
   )?;
+  Ok(())
+}
+
+async fn start_health_watcher(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
+  health::start_health_watcher(shared_data).await;
   Ok(())
 }
 

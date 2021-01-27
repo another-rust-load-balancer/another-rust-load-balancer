@@ -42,7 +42,7 @@ where
     let remote_addr = stream.remote_addr().expect("No remote SocketAddr");
 
     async move {
-      Ok::<_, io::Error>(LoadBalanceService {
+      Ok::<_, io::Error>(MainService {
         client_address: remote_addr,
         shared_data,
         request_https: https,
@@ -150,7 +150,7 @@ pub struct SharedData {
   pub backend_pools: Vec<Arc<BackendPool>>,
 }
 
-pub struct LoadBalanceService {
+pub struct MainService {
   request_https: bool,
   client_address: SocketAddr,
   shared_data: Arc<SharedData>,
@@ -170,7 +170,7 @@ pub fn bad_gateway() -> Response<Body> {
     .unwrap()
 }
 
-impl LoadBalanceService {
+impl MainService {
   fn pool_by_req(&self, client_request: &Request<Body>) -> Option<Arc<BackendPool>> {
     self
       .shared_data
@@ -189,7 +189,7 @@ impl LoadBalanceService {
   }
 }
 
-impl Service<Request<Body>> for LoadBalanceService {
+impl Service<Request<Body>> for MainService {
   type Response = Response<Body>;
   type Error = hyper::Error;
 
@@ -244,8 +244,8 @@ mod tests {
   use super::*;
   use crate::load_balancing::random::Random;
 
-  fn generate_test_service(host: String, request_https: bool) -> LoadBalanceService {
-    LoadBalanceService {
+  fn generate_test_service(host: String, request_https: bool) -> MainService {
+    MainService {
       request_https,
       client_address: "127.0.0.1:3000".parse().unwrap(),
       shared_data: Arc::new(SharedData {

@@ -1,10 +1,11 @@
-use crate::load_balancing::LoadBalancingStrategy;
 use crate::load_balancing::{ip_hash::IPHash, least_connection::LeastConnection};
 use crate::load_balancing::{round_robin::RoundRobin, sticky_cookie::StickyCookie};
 use crate::middleware::compression::Compression;
 use crate::middleware::{RequestHandler, RequestHandlerChain};
 use crate::server::{BackendPool, BackendPoolConfig, SharedData};
+use crate::{health::Healthiness, load_balancing::LoadBalancingStrategy};
 use crate::{load_balancing::random::Random, server::BackendPoolBuilder};
+use arc_swap::ArcSwap;
 use futures::Future;
 use log::{error, info, warn};
 use notify::{watcher, DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
@@ -14,7 +15,6 @@ use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use arc_swap::ArcSwap;
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 pub enum BackendConfigProtocol {
@@ -153,7 +153,11 @@ impl From<BackendConfigEntry> for BackendPool {
   fn from(other: BackendConfigEntry) -> Self {
     // TODO: This conversion can fail, should we use TryFrom or wrap this in some kind of error?
     let matcher = other.matcher.into();
-    let addresses = other.addresses;
+    let addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)> = other
+      .addresses
+      .into_iter()
+      .map(|address| (address, Arc::new(ArcSwap::from_pointee(Healthiness::Healthy))))
+      .collect();
     let strategy = other.strategy.into();
     let config = other.protocol.into();
     let chain = other.chain.into();
@@ -254,7 +258,7 @@ impl BackendConfigWatcher {
   where
     F: Fn(Arc<ArcSwap<SharedData>>) -> Fut,
     Fut: Future<Output = Out> + 'static + Send,
-    Out: 'static + Send
+    Out: 'static + Send,
   {
     let (cs, mut cr) = unbounded_channel();
     // dropping this would stop the config watcher
@@ -272,8 +276,8 @@ impl BackendConfigWatcher {
     tokio::spawn(task_fn(config.clone()));
 
     loop {
-        let new_config = cr.recv().await.unwrap();
-        config.store(Arc::new(new_config.into()));
+      let new_config = cr.recv().await.unwrap();
+      config.store(Arc::new(new_config.into()));
     }
   }
 }

@@ -12,6 +12,7 @@ async-stream = "0.3"
 async-trait = "0.1"
 async-compression = { version = "0.3", features = ["brotli", "deflate", "gzip", "tokio"] }
 bytes = "0.5"
+chrono = "0.4"
 clap = "2.33"
 cookie = "0.14"
 futures = "0.3"

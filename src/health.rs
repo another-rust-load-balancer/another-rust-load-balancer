@@ -6,8 +6,8 @@ use hyper::{
 };
 use log::info;
 use std::convert::TryFrom;
+use std::time::SystemTime;
 use std::{fmt, sync::Arc};
-use std::{ops::Deref, time::SystemTime};
 
 const CHECK_INTERVAL: i64 = 60;
 const SLOW_THRESHOLD: i64 = 100;
@@ -52,10 +52,10 @@ async fn check_health_once(shared_data: Arc<ArcSwap<SharedData>>) {
         .build()
         .unwrap();
 
-      let previous_healthiness = healthiness.load_full();
+      let previous_healthiness = healthiness.load();
       let result = contact_server(uri).await;
 
-      if previous_healthiness.deref() != &result {
+      if previous_healthiness.as_ref() != &result {
         info!("new healthiness for {}: {}", &server_address, &result);
         healthiness.store(Arc::new(result));
       }

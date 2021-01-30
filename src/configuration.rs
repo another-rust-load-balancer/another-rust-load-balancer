@@ -5,7 +5,7 @@ use crate::{
     sticky_cookie::StickyCookie, LoadBalancingStrategy,
   },
   middleware::{compression::Compression, https_redirector::HttpsRedirector, Middleware, MiddlewareChain},
-  server::{BackendPool, BackendPoolBuilder, BackendPoolConfig, SharedData},
+  server::{self, BackendPool, BackendPoolBuilder, SharedData},
 };
 use arc_swap::ArcSwap;
 use futures::Future;
@@ -28,7 +28,7 @@ impl BackendConfigWatcher {
     BackendConfigWatcher { toml_path }
   }
 
-  fn start_config_watcher(toml_path: &str, cs: UnboundedSender<BackendConfig>) -> RecommendedWatcher {
+  fn start_config_watcher(toml_path: &str, cs: UnboundedSender<Config>) -> RecommendedWatcher {
     let toml_path = toml_path.to_string();
     let (tx, rx) = channel();
     let mut watcher = watcher(tx, Duration::from_secs(10)).unwrap();
@@ -37,8 +37,8 @@ impl BackendConfigWatcher {
     std::thread::spawn(move || loop {
       let option_config = match rx.recv() {
         Ok(event) => match event {
-          DebouncedEvent::NoticeWrite(_) => BackendConfig::new(&toml_path),
-          DebouncedEvent::Write(_) => BackendConfig::new(&toml_path),
+          DebouncedEvent::NoticeWrite(_) => Config::new(&toml_path),
+          DebouncedEvent::Write(_) => Config::new(&toml_path),
           _ => None,
         },
         Err(_) => {
@@ -69,7 +69,7 @@ impl BackendConfigWatcher {
     // dropping this would stop the config watcher
     let _watcher = BackendConfigWatcher::start_config_watcher(&self.toml_path, cs);
 
-    let initial_config = BackendConfig::new(&self.toml_path);
+    let initial_config = Config::new(&self.toml_path);
     let initial_config = if initial_config.is_some() {
       initial_config.unwrap()
     } else {
@@ -88,12 +88,12 @@ impl BackendConfigWatcher {
 }
 
 #[derive(Debug, Deserialize)]
-struct BackendConfig {
-  backend_pools: Vec<BackendConfigEntry>,
+struct Config {
+  backend_pools: Vec<BackendPoolConfig>,
 }
 
-impl BackendConfig {
-  fn new(toml_path: &str) -> Option<BackendConfig> {
+impl Config {
+  fn new(toml_path: &str) -> Option<Config> {
     let toml_str_result = fs::read_to_string(toml_path);
     let toml_str = match toml_str_result {
       Ok(toml_str) => toml_str,
@@ -103,7 +103,7 @@ impl BackendConfig {
       }
     };
 
-    let config_result: Result<BackendConfig, toml::de::Error> = toml::from_str(toml_str.as_str());
+    let config_result: Result<Config, toml::de::Error> = toml::from_str(toml_str.as_str());
     match config_result {
       Ok(config) => {
         info!("Successfully parsed configuration!");
@@ -117,29 +117,25 @@ impl BackendConfig {
   }
 }
 
-impl From<BackendConfig> for SharedData {
-  fn from(other: BackendConfig) -> Self {
-    let backend_pools = other
-      .backend_pools
-      .into_iter()
-      .map(|b| Arc::new(b.into()))
-      .collect::<Vec<Arc<BackendPool>>>();
+impl From<Config> for SharedData {
+  fn from(other: Config) -> Self {
+    let backend_pools = other.backend_pools.into_iter().map(|b| Arc::new(b.into())).collect();
     SharedData { backend_pools }
   }
 }
 
 #[derive(Debug, Deserialize)]
-struct BackendConfigEntry {
+struct BackendPoolConfig {
   addresses: Vec<String>,
   matcher: String,
-  strategy: BackendConfigLBStrategy,
+  strategy: LoadBalancingStrategyConfig,
   protocol: BackendConfigProtocol,
-  chain: Vec<BackendConfigMiddleware>,
-  client: Option<BackendClientConfig>,
+  chain: Vec<MiddlewareConfig>,
+  client: Option<ClientConfig>,
 }
 
-impl From<BackendConfigEntry> for BackendPool {
-  fn from(other: BackendConfigEntry) -> Self {
+impl From<BackendPoolConfig> for BackendPool {
+  fn from(other: BackendPoolConfig) -> Self {
     // TODO: This conversion can fail, should we use TryFrom or wrap this in some kind of error?
     let matcher = other.matcher.into();
     let addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)> = other
@@ -168,13 +164,13 @@ impl From<BackendConfigEntry> for BackendPool {
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
-enum BackendConfigLBStrategy {
+enum LoadBalancingStrategyConfig {
   StickyCookie {
     cookie_name: String,
     http_only: bool,
     secure: bool,
     same_site: StickyCookieSameSite,
-    inner: Box<BackendConfigLBStrategy>,
+    inner: Box<LoadBalancingStrategyConfig>,
   },
   Random,
   IPHash,
@@ -182,10 +178,10 @@ enum BackendConfigLBStrategy {
   RoundRobin,
 }
 
-impl From<BackendConfigLBStrategy> for Box<dyn LoadBalancingStrategy> {
-  fn from(other: BackendConfigLBStrategy) -> Self {
+impl From<LoadBalancingStrategyConfig> for Box<dyn LoadBalancingStrategy> {
+  fn from(other: LoadBalancingStrategyConfig) -> Self {
     match other {
-      BackendConfigLBStrategy::StickyCookie {
+      LoadBalancingStrategyConfig::StickyCookie {
         cookie_name,
         http_only,
         secure,
@@ -201,10 +197,10 @@ impl From<BackendConfigLBStrategy> for Box<dyn LoadBalancingStrategy> {
           same_site.into(),
         ))
       }
-      BackendConfigLBStrategy::Random {} => Box::new(Random::new()),
-      BackendConfigLBStrategy::IPHash {} => Box::new(IPHash::new()),
-      BackendConfigLBStrategy::RoundRobin {} => Box::new(RoundRobin::new()),
-      BackendConfigLBStrategy::LeastConnection {} => Box::new(LeastConnection::new()),
+      LoadBalancingStrategyConfig::Random => Box::new(Random::new()),
+      LoadBalancingStrategyConfig::IPHash => Box::new(IPHash::new()),
+      LoadBalancingStrategyConfig::RoundRobin => Box::new(RoundRobin::new()),
+      LoadBalancingStrategyConfig::LeastConnection => Box::new(LeastConnection::new()),
     }
   }
 }
@@ -228,7 +224,7 @@ impl From<StickyCookieSameSite> for cookie::SameSite {
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 pub enum BackendConfigProtocol {
-  Http {},
+  Http,
   Https {
     host: String,
     certificate_path: String,
@@ -236,15 +232,15 @@ pub enum BackendConfigProtocol {
   },
 }
 
-impl From<BackendConfigProtocol> for BackendPoolConfig {
+impl From<BackendConfigProtocol> for server::BackendPoolConfig {
   fn from(other: BackendConfigProtocol) -> Self {
     match other {
-      BackendConfigProtocol::Http {} => BackendPoolConfig::HttpConfig {},
+      BackendConfigProtocol::Http => server::BackendPoolConfig::HttpConfig,
       BackendConfigProtocol::Https {
         host,
         certificate_path,
         private_key_path,
-      } => BackendPoolConfig::HttpsConfig {
+      } => server::BackendPoolConfig::HttpsConfig {
         host,
         certificate_path,
         private_key_path,
@@ -254,22 +250,22 @@ impl From<BackendConfigProtocol> for BackendPoolConfig {
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
-enum BackendConfigMiddleware {
+enum MiddlewareConfig {
   Compression,
   HttpsRedirector,
 }
 
-impl From<BackendConfigMiddleware> for Box<dyn Middleware> {
-  fn from(other: BackendConfigMiddleware) -> Self {
+impl From<MiddlewareConfig> for Box<dyn Middleware> {
+  fn from(other: MiddlewareConfig) -> Self {
     match other {
-      BackendConfigMiddleware::Compression => Box::new(Compression {}),
-      BackendConfigMiddleware::HttpsRedirector => Box::new(HttpsRedirector {}),
+      MiddlewareConfig::Compression => Box::new(Compression {}),
+      MiddlewareConfig::HttpsRedirector => Box::new(HttpsRedirector {}),
     }
   }
 }
 
-impl From<Vec<BackendConfigMiddleware>> for MiddlewareChain {
-  fn from(other: Vec<BackendConfigMiddleware>) -> Self {
+impl From<Vec<MiddlewareConfig>> for MiddlewareChain {
+  fn from(other: Vec<MiddlewareConfig>) -> Self {
     let mut chain = Box::new(MiddlewareChain::Empty);
     for middleware in other.into_iter().rev() {
       chain = Box::new(MiddlewareChain::Entry {
@@ -282,7 +278,7 @@ impl From<Vec<BackendConfigMiddleware>> for MiddlewareChain {
 }
 
 #[derive(Debug, Deserialize)]
-struct BackendClientConfig {
+struct ClientConfig {
   pool_idle_timeout: Option<Duration>,
   pool_max_idle_per_host: Option<usize>,
 }

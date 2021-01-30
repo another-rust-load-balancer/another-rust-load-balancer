@@ -17,8 +17,9 @@ use hyper::{
   Body, Client, Request, Response, Server,
 };
 use log::debug;
+use serde::Deserialize;
 use std::{
-  collections::HashMap,
+  collections::{HashMap, HashSet},
   error::Error,
   io,
   net::SocketAddr,
@@ -66,8 +67,7 @@ pub struct BackendPoolBuilder {
   addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
   strategy: Box<dyn LoadBalancingStrategy>,
   chain: MiddlewareChain,
-  http_enabled: bool,
-  certificates: HashMap<String, CertificateConfig>,
+  schemes: HashSet<Scheme>,
   pool_idle_timeout: Option<Duration>,
   pool_max_idle_per_host: Option<usize>,
 }
@@ -78,16 +78,14 @@ impl BackendPoolBuilder {
     addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
     strategy: Box<dyn LoadBalancingStrategy>,
     chain: MiddlewareChain,
-    http_enabled: bool,
-    certificates: HashMap<String, CertificateConfig>,
+    schemes: HashSet<Scheme>,
   ) -> BackendPoolBuilder {
     BackendPoolBuilder {
       matcher,
       addresses,
       strategy,
       chain,
-      http_enabled,
-      certificates,
+      schemes,
       pool_idle_timeout: None,
       pool_max_idle_per_host: None,
     }
@@ -120,9 +118,8 @@ impl BackendPoolBuilder {
       addresses: self.addresses,
       strategy,
       chain: self.chain,
-      http_enabled: self.http_enabled,
-      certificates: self.certificates,
       client,
+      schemes: self.schemes,
     }
   }
 }
@@ -133,17 +130,13 @@ pub struct BackendPool {
   pub addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
   pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
   pub chain: MiddlewareChain,
-  pub http_enabled: bool,
-  pub certificates: HashMap<String, CertificateConfig>,
   pub client: Client<StrategyNotifyHttpConnector, Body>,
+  pub schemes: HashSet<Scheme>,
 }
 
 impl BackendPool {
   fn supports(&self, scheme: &Scheme) -> bool {
-    match scheme {
-      Scheme::HTTP => self.http_enabled,
-      Scheme::HTTPS => true,
-    }
+    self.schemes.contains(scheme)
   }
 }
 
@@ -161,9 +154,10 @@ pub struct MainService {
 
 pub struct SharedData {
   pub backend_pools: Vec<Arc<BackendPool>>,
+  pub certificates: HashMap<String, CertificateConfig>,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Hash)]
 pub enum Scheme {
   HTTP,
   HTTPS,
@@ -242,6 +236,7 @@ mod tests {
       scheme,
       client_address: "127.0.0.1:3000".parse().unwrap(),
       shared_data: Arc::new(SharedData {
+        certificates: HashMap::new(),
         backend_pools: vec![Arc::new(
           BackendPoolBuilder::new(
             BackendPoolMatcher::Host(host),
@@ -251,8 +246,7 @@ mod tests {
             )],
             Box::new(Random::new()),
             MiddlewareChain::Empty,
-            true,
-            HashMap::new(),
+            HashSet::from_iter(vec![Scheme::HTTP]),
           )
           .build(),
         )],

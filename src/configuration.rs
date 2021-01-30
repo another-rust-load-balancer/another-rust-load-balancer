@@ -5,7 +5,7 @@ use crate::{
     sticky_cookie::StickyCookie, LoadBalancingStrategy,
   },
   middleware::{compression::Compression, https_redirector::HttpsRedirector, Middleware, MiddlewareChain},
-  server::{BackendPool, BackendPoolBuilder, SharedData},
+  server::{BackendPool, BackendPoolBuilder, Scheme, SharedData},
 };
 use arc_swap::ArcSwap;
 use futures::Future;
@@ -13,7 +13,7 @@ use log::{error, info, warn};
 use notify::{watcher, DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
 use std::{
-  collections::HashMap,
+  collections::{HashMap, HashSet},
   fs,
   sync::{mpsc::channel, Arc},
   time::Duration,
@@ -91,6 +91,8 @@ impl BackendConfigWatcher {
 #[derive(Debug, Deserialize)]
 struct Config {
   backend_pools: Vec<BackendPoolConfig>,
+  #[serde(default = "HashMap::new")]
+  certificates: HashMap<String, CertificateConfig>,
 }
 
 impl Config {
@@ -108,6 +110,7 @@ impl Config {
     match config_result {
       Ok(config) => {
         info!("Successfully parsed configuration!");
+        config.print_warnings();
         Some(config)
       }
       Err(e) => {
@@ -116,12 +119,31 @@ impl Config {
       }
     }
   }
+
+  fn print_warnings(&self) {
+    for (index, pool) in self.backend_pools.iter().enumerate() {
+      if pool.schemes.is_empty() {
+        warn!("backend pool at index {} is unreachable, since no schemes are registered. Consider adding `HTTP` or `HTTPS` to the schemes array.", index);
+      }
+
+      if pool.addresses.is_empty() {
+        warn!(
+          "backend pool at index {} does not contain any addresses. It will always result in bad gateway errors.",
+          index
+        );
+      }
+    }
+  }
 }
 
 impl From<Config> for SharedData {
   fn from(other: Config) -> Self {
+    let certificates = other.certificates;
     let backend_pools = other.backend_pools.into_iter().map(|b| Arc::new(b.into())).collect();
-    SharedData { backend_pools }
+    SharedData {
+      backend_pools,
+      certificates,
+    }
   }
 }
 
@@ -132,10 +154,7 @@ struct BackendPoolConfig {
   strategy: LoadBalancingStrategyConfig,
   chain: Vec<MiddlewareConfig>,
   client: Option<ClientConfig>,
-  #[serde(default = "_true")]
-  http_enabled: bool,
-  #[serde(default = "HashMap::new")]
-  certificates: HashMap<String, CertificateConfig>,
+  schemes: HashSet<Scheme>,
 }
 
 impl From<BackendPoolConfig> for BackendPool {
@@ -149,9 +168,9 @@ impl From<BackendPoolConfig> for BackendPool {
       .collect();
     let strategy = other.strategy.into();
     let chain = other.chain.into();
-    let http_enabled = other.http_enabled;
-    let certificates = other.certificates;
-    let mut builder = BackendPoolBuilder::new(matcher, addresses, strategy, chain, http_enabled, certificates);
+    let schemes = other.schemes;
+
+    let mut builder = BackendPoolBuilder::new(matcher, addresses, strategy, chain, schemes);
     if let Some(client) = other.client {
       if let Some(pool_idle_timeout) = client.pool_idle_timeout {
         builder.pool_idle_timeout(pool_idle_timeout);

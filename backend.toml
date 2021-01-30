@@ -7,6 +7,7 @@ strategy={ StickyCookie = {cookie_name="lb_cookie", http_only=false, secure=fals
 chain = [
     { Compression = {} },
 ]
+schemes = ["HTTP"]
 
 ## Pool 2
 [[backend_pools]]
@@ -14,6 +15,7 @@ matcher="Host('httpbin.localhost')"
 addresses=["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
 strategy={ Random = {} }
 chain = [ { Compression = {} } ]
+schemes = ["HTTP"]
 
 ## Pool 3
 [[backend_pools]]
@@ -21,9 +23,7 @@ matcher="Host('https.localhost')"
 addresses=["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
 strategy={ IPHash = {} }
 chain = [ { HttpsRedirector = {} }, { Compression = {} } ]
-
-[backend_pools.certificates]
-"https.localhost" = { certificate_path = "x509/https.localhost.cer", private_key_path = "x509/https.localhost.key" }
+schemes = ["HTTP", "HTTPS"]
 
 ## Pool 4
 [[backend_pools]]
@@ -31,6 +31,9 @@ matcher = "Host('www.arlb.de')"
 addresses = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
 strategy = { Random = {} }
 chain = [ { Compression = {} } ]
+schemes = ["HTTP", "HTTPS"]
 
-[backend_pools.certificates]
+[certificates]
 "www.arlb.de" = { certificate_path = "x509/www.arlb.de.cer", private_key_path = "x509/www.arlb.de.key" }
+"https.localhost" = { certificate_path = "x509/https.localhost.cer", private_key_path = "x509/https.localhost.key" }
+

@@ -73,15 +73,13 @@ async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resu
   let mut cert_resolver = ResolvesServerCertUsingSNI::new();
 
   let data = shared_data.load();
-  for pool in &data.backend_pools {
-    for (sni_name, certificate) in &pool.certificates {
-      tls::add_certificate(
-        &mut cert_resolver,
-        &sni_name,
-        &certificate.certificate_path,
-        &certificate.private_key_path,
-      )?;
-    }
+  for (sni_name, certificate) in &data.certificates {
+    tls::add_certificate(
+      &mut cert_resolver,
+      &sni_name,
+      &certificate.certificate_path,
+      &certificate.private_key_path,
+    )?;
   }
   tls_config.cert_resolver = Arc::new(cert_resolver);
 

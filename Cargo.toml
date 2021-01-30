@@ -36,3 +36,4 @@ tokio-util = { version = "0.6", features = ["full"] }
 tokio-test = "0.4.0"
 toml = { version = "0.5", features = ["preserve_order"] }
 url = "2.2"
+http-auth-basic = "0.1"

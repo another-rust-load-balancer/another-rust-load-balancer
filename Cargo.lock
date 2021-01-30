@@ -61,7 +61,11 @@ dependencies = [
  "cookie",
  "futures",
  "futures-util",
+<<<<<<< HEAD
  "gethostname",
+=======
+ "http-auth-basic",
+>>>>>>> Add http basic auth with properties file for user credentials
  "hyper",
  "hyper-rustls",
  "hyper-timeout",
@@ -635,6 +639,15 @@ dependencies = [
  "bytes 0.5.6",
  "fnv",
  "itoa",
+]
+
+[[package]]
+name = "http-auth-basic"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "887a45f9bf1e5e7023b8c02bcb9494f278dd7c0116a5a9cb6fb0f9952ffe8562"
+dependencies = [
+ "base64 0.12.3",
 ]
 
 [[package]]

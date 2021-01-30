@@ -5,7 +5,7 @@ use crate::{
     sticky_cookie::StickyCookie, LoadBalancingStrategy,
   },
   middleware::{compression::Compression, https_redirector::HttpsRedirector, Middleware, MiddlewareChain},
-  server::{self, BackendPool, BackendPoolBuilder, SharedData},
+  server::{BackendPool, BackendPoolBuilder, SharedData},
 };
 use arc_swap::ArcSwap;
 use futures::Future;
@@ -13,6 +13,7 @@ use log::{error, info, warn};
 use notify::{watcher, DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
 use std::{
+  collections::HashMap,
   fs,
   sync::{mpsc::channel, Arc},
   time::Duration,
@@ -126,12 +127,15 @@ impl From<Config> for SharedData {
 
 #[derive(Debug, Deserialize)]
 struct BackendPoolConfig {
-  addresses: Vec<String>,
   matcher: String,
+  addresses: Vec<String>,
   strategy: LoadBalancingStrategyConfig,
-  protocol: BackendConfigProtocol,
   chain: Vec<MiddlewareConfig>,
   client: Option<ClientConfig>,
+  #[serde(default = "_true")]
+  http_enabled: bool,
+  #[serde(default = "HashMap::new")]
+  certificates: HashMap<String, CertificateConfig>,
 }
 
 impl From<BackendPoolConfig> for BackendPool {
@@ -144,12 +148,11 @@ impl From<BackendPoolConfig> for BackendPool {
       .map(|address| (address, Arc::new(ArcSwap::from_pointee(Healthiness::Healthy))))
       .collect();
     let strategy = other.strategy.into();
-    let config = other.protocol.into();
     let chain = other.chain.into();
-    let client = other.client;
-
-    let mut builder = BackendPoolBuilder::new(matcher, addresses, strategy, config, chain);
-    if let Some(client) = client {
+    let http_enabled = other.http_enabled;
+    let certificates = other.certificates;
+    let mut builder = BackendPoolBuilder::new(matcher, addresses, strategy, chain, http_enabled, certificates);
+    if let Some(client) = other.client {
       if let Some(pool_idle_timeout) = client.pool_idle_timeout {
         builder.pool_idle_timeout(pool_idle_timeout);
       }
@@ -222,33 +225,6 @@ impl From<StickyCookieSameSite> for cookie::SameSite {
   }
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
-pub enum BackendConfigProtocol {
-  Http,
-  Https {
-    host: String,
-    certificate_path: String,
-    private_key_path: String,
-  },
-}
-
-impl From<BackendConfigProtocol> for server::BackendPoolConfig {
-  fn from(other: BackendConfigProtocol) -> Self {
-    match other {
-      BackendConfigProtocol::Http => server::BackendPoolConfig::HttpConfig,
-      BackendConfigProtocol::Https {
-        host,
-        certificate_path,
-        private_key_path,
-      } => server::BackendPoolConfig::HttpsConfig {
-        host,
-        certificate_path,
-        private_key_path,
-      },
-    }
-  }
-}
-
 #[derive(Debug, Deserialize, PartialEq)]
 enum MiddlewareConfig {
   Compression,
@@ -281,4 +257,15 @@ impl From<Vec<MiddlewareConfig>> for MiddlewareChain {
 struct ClientConfig {
   pool_idle_timeout: Option<Duration>,
   pool_max_idle_per_host: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CertificateConfig {
+  pub certificate_path: String,
+  pub private_key_path: String,
+}
+
+/// See https://github.com/serde-rs/serde/issues/1030
+fn _true() -> bool {
+  true
 }

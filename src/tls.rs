@@ -8,7 +8,7 @@ use tokio_rustls::rustls::{
 
 pub fn add_certificate<P1, P2>(
   cert_resolver: &mut ResolvesServerCertUsingSNI,
-  dns_name: &str,
+  sni_name: &str,
   certificate_path: P1,
   private_key_path: P2,
 ) -> Result<(), io::Error>
@@ -21,7 +21,7 @@ where
   let private_key = RSASigningKey::new(&private_key).map_err(|_| io::Error::new(InvalidData, "invalid rsa key"))?;
   let certificate_key = CertifiedKey::new(certificates, Arc::new(Box::new(private_key)));
   cert_resolver
-    .add(dns_name, certificate_key)
+    .add(sni_name, certificate_key)
     .map_err(|e| io::Error::new(InvalidData, e))
 }
 

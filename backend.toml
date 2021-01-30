@@ -4,7 +4,6 @@
 matcher="HostRegexp('(.*\\.)?whoami\\.localhost$')"
 addresses=["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"]
 strategy={ StickyCookie = {cookie_name="lb_cookie", http_only=false, secure=false, same_site= { Lax = {} }, inner = { RoundRobin = {} }} }
-protocol = { Http = {} }
 chain = [
     { Compression = {} },
 ]
@@ -14,7 +13,6 @@ chain = [
 matcher="Host('httpbin.localhost')"
 addresses=["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
 strategy={ Random = {} }
-protocol = { Http = {} }
 chain = [ { Compression = {} } ]
 
 ## Pool 3
@@ -22,13 +20,17 @@ chain = [ { Compression = {} } ]
 matcher="Host('https.localhost')"
 addresses=["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
 strategy={ IPHash = {} }
-protocol = { Https = { host = "https.localhost", certificate_path="x509/https.localhost.cer", private_key_path="x509/https.localhost.key"  } }
-chain = [ { Compression = {} } ]
+chain = [ { HttpsRedirector = {} }, { Compression = {} } ]
+
+[backend_pools.certificates]
+"https.localhost" = { certificate_path = "x509/https.localhost.cer", private_key_path = "x509/https.localhost.key" }
 
 ## Pool 4
 [[backend_pools]]
-matcher="Host('www.arlb.de')"
-addresses=["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
-strategy={ Random = {} }
-protocol = { Https = { host = "www.arlb.de", certificate_path="x509/www.arlb.de.cer", private_key_path="x509/www.arlb.de.key"  } }
+matcher = "Host('www.arlb.de')"
+addresses = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
+strategy = { Random = {} }
 chain = [ { Compression = {} } ]
+
+[backend_pools.certificates]
+"www.arlb.de" = { certificate_path = "x509/www.arlb.de.cer", private_key_path = "x509/www.arlb.de.key" }

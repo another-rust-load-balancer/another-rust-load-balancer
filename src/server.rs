@@ -1,5 +1,7 @@
 use crate::{
   backend_pool_matcher::BackendPoolMatcher,
+  configuration::CertificateConfig,
+  error_response::{bad_gateway, not_found},
   health::Healthiness,
   http_client::StrategyNotifyHttpConnector,
   listeners::RemoteAddress,
@@ -12,10 +14,11 @@ use futures::TryFutureExt;
 use hyper::{
   server::accept::Accept,
   service::{make_service_fn, Service},
-  Body, Client, Request, Response, Server, StatusCode,
+  Body, Client, Request, Response, Server,
 };
-use log::{debug, error};
+use log::debug;
 use std::{
+  collections::HashMap,
   error::Error,
   io,
   net::SocketAddr,
@@ -30,7 +33,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 pub async fn create<'a, I, IE, IO>(
   acceptor: I,
   shared_data: Arc<ArcSwap<SharedData>>,
-  https: bool,
+  scheme: Scheme,
 ) -> Result<(), io::Error>
 where
   I: Accept<Conn = IO, Error = IE>,
@@ -45,7 +48,7 @@ where
       Ok::<_, io::Error>(MainService {
         client_address: remote_addr,
         shared_data,
-        request_https: https,
+        scheme,
       })
     }
   });
@@ -58,22 +61,13 @@ where
     .await
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum BackendPoolConfig {
-  HttpConfig,
-  HttpsConfig {
-    host: String,
-    certificate_path: String,
-    private_key_path: String,
-  },
-}
-
 pub struct BackendPoolBuilder {
   matcher: BackendPoolMatcher,
   addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
   strategy: Box<dyn LoadBalancingStrategy>,
-  config: BackendPoolConfig,
   chain: MiddlewareChain,
+  http_enabled: bool,
+  certificates: HashMap<String, CertificateConfig>,
   pool_idle_timeout: Option<Duration>,
   pool_max_idle_per_host: Option<usize>,
 }
@@ -83,15 +77,17 @@ impl BackendPoolBuilder {
     matcher: BackendPoolMatcher,
     addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
     strategy: Box<dyn LoadBalancingStrategy>,
-    config: BackendPoolConfig,
     chain: MiddlewareChain,
+    http_enabled: bool,
+    certificates: HashMap<String, CertificateConfig>,
   ) -> BackendPoolBuilder {
     BackendPoolBuilder {
       matcher,
       addresses,
       strategy,
-      config,
       chain,
+      http_enabled,
+      certificates,
       pool_idle_timeout: None,
       pool_max_idle_per_host: None,
     }
@@ -123,8 +119,9 @@ impl BackendPoolBuilder {
       matcher: self.matcher,
       addresses: self.addresses,
       strategy,
-      config: self.config,
       chain: self.chain,
+      http_enabled: self.http_enabled,
+      certificates: self.certificates,
       client,
     }
   }
@@ -135,9 +132,19 @@ pub struct BackendPool {
   pub matcher: BackendPoolMatcher,
   pub addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
   pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
-  pub config: BackendPoolConfig,
-  pub client: Client<StrategyNotifyHttpConnector, Body>,
   pub chain: MiddlewareChain,
+  pub http_enabled: bool,
+  pub certificates: HashMap<String, CertificateConfig>,
+  pub client: Client<StrategyNotifyHttpConnector, Body>,
+}
+
+impl BackendPool {
+  fn supports(&self, scheme: &Scheme) -> bool {
+    match scheme {
+      Scheme::HTTP => self.http_enabled,
+      Scheme::HTTPS => true,
+    }
+  }
 }
 
 impl PartialEq for BackendPool {
@@ -146,49 +153,20 @@ impl PartialEq for BackendPool {
   }
 }
 
+pub struct MainService {
+  client_address: SocketAddr,
+  shared_data: Arc<SharedData>,
+  scheme: Scheme,
+}
+
 pub struct SharedData {
   pub backend_pools: Vec<Arc<BackendPool>>,
 }
 
-pub struct MainService {
-  request_https: bool,
-  client_address: SocketAddr,
-  shared_data: Arc<SharedData>,
-}
-
-fn not_found() -> Response<Body> {
-  Response::builder()
-    .status(StatusCode::NOT_FOUND)
-    .body(Body::from("404 - page not found"))
-    .unwrap()
-}
-
-pub fn handle_bad_gateway<E: Error>(error: E) -> Response<Body> {
-  log_error(error);
-  bad_gateway()
-}
-
-pub fn bad_gateway() -> Response<Body> {
-  Response::builder()
-    .status(StatusCode::BAD_GATEWAY)
-    .body(Body::empty())
-    .unwrap()
-}
-
-pub fn handle_internal_server_error<E: Error>(error: E) -> Response<Body> {
-  log_error(error);
-  internal_server_error()
-}
-
-pub fn internal_server_error() -> Response<Body> {
-  Response::builder()
-    .status(StatusCode::INTERNAL_SERVER_ERROR)
-    .body(Body::empty())
-    .unwrap()
-}
-
-pub fn log_error<E: Error>(error: E) {
-  error!("{}", error);
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum Scheme {
+  HTTP,
+  HTTPS,
 }
 
 impl MainService {
@@ -197,16 +175,9 @@ impl MainService {
       .shared_data
       .backend_pools
       .iter()
+      .filter(|pool| pool.supports(&self.scheme))
       .find(|pool| pool.matcher.matches(request))
       .cloned()
-  }
-
-  fn matches_pool_config(&self, config: &BackendPoolConfig) -> bool {
-    match config {
-      BackendPoolConfig::HttpConfig {} if self.request_https => false,
-      BackendPoolConfig::HttpsConfig { .. } if !self.request_https => false,
-      _ => true,
-    }
   }
 }
 
@@ -225,7 +196,8 @@ impl Service<Request<Body>> for MainService {
   fn call(&mut self, request: Request<Body>) -> Self::Future {
     debug!("{:#?} {} {}", request.version(), request.method(), request.uri());
     match self.pool_by_req(&request) {
-      Some(pool) if self.matches_pool_config(&pool.config) => {
+      Some(pool) => {
+        let client_scheme = self.scheme;
         let client_address = self.client_address;
 
         Box::pin(async move {
@@ -249,7 +221,7 @@ impl Service<Request<Body>> for MainService {
             };
             let backend = pool.strategy.select_backend(&request, &context);
             let result = backend
-              .forward_request_through_middleware(request, &pool.chain, &client_address, &pool.client)
+              .forward_request_through_middleware(request, &pool.chain, &client_scheme, &client_address, &pool.client)
               .await;
             Ok(result)
           }
@@ -265,9 +237,9 @@ mod tests {
   use super::*;
   use crate::load_balancing::random::Random;
 
-  fn generate_test_service(host: String, request_https: bool) -> MainService {
+  fn generate_test_service(host: String, scheme: Scheme) -> MainService {
     MainService {
-      request_https,
+      scheme,
       client_address: "127.0.0.1:3000".parse().unwrap(),
       shared_data: Arc::new(SharedData {
         backend_pools: vec![Arc::new(
@@ -278,8 +250,9 @@ mod tests {
               Arc::new(ArcSwap::from_pointee(Healthiness::Healthy)),
             )],
             Box::new(Random::new()),
-            BackendPoolConfig::HttpConfig {},
             MiddlewareChain::Empty,
+            true,
+            HashMap::new(),
           )
           .build(),
         )],
@@ -289,7 +262,7 @@ mod tests {
 
   #[test]
   fn pool_by_req_no_matching_pool() {
-    let service = generate_test_service("whoami.localhost".into(), false);
+    let service = generate_test_service("whoami.localhost".into(), Scheme::HTTP);
 
     let request = Request::builder()
       .header("host", "whoami.de")
@@ -300,9 +273,10 @@ mod tests {
 
     assert_eq!(pool.is_none(), true);
   }
+
   #[test]
   fn pool_by_req_matching_pool() {
-    let service = generate_test_service("whoami.localhost".into(), false);
+    let service = generate_test_service("whoami.localhost".into(), Scheme::HTTP);
     let request = Request::builder()
       .header("host", "whoami.localhost")
       .body(Body::empty())
@@ -311,23 +285,5 @@ mod tests {
     let pool = service.pool_by_req(&request);
 
     assert_eq!(*pool.unwrap(), *service.shared_data.backend_pools[0]);
-  }
-
-  #[test]
-  fn matches_pool_config() {
-    let http_config = BackendPoolConfig::HttpConfig {};
-    let https_service = generate_test_service("whoami.localhost".into(), true);
-    let http_service = generate_test_service("whoami.localhost".into(), false);
-    let https_config = BackendPoolConfig::HttpsConfig {
-      host: "whoami.localhost".into(),
-      certificate_path: "some/certificate/path".into(),
-      private_key_path: "some/private/key/path".into(),
-    };
-
-    assert_eq!(http_service.matches_pool_config(&https_config), false);
-    assert_eq!(http_service.matches_pool_config(&http_config), true);
-
-    assert_eq!(https_service.matches_pool_config(&https_config), true);
-    assert_eq!(https_service.matches_pool_config(&http_config), false);
   }
 }

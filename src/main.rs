@@ -46,11 +46,11 @@ pub async fn main() -> Result<(), io::Error> {
   Ok(())
 }
 
-pub async fn start_listening(shared_date: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
+pub async fn start_listening(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
   try_join!(
-    start_health_watcher(shared_date.clone()),
-    listen_for_http_request(shared_date.clone()),
-    listen_for_https_request(shared_date.clone())
+    start_health_watcher(shared_data.clone()),
+    listen_for_http_request(shared_data.clone()),
+    listen_for_https_request(shared_data.clone())
   )?;
   Ok(())
 }

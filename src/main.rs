@@ -4,7 +4,7 @@ use clap::{App, Arg};
 use listeners::{AcceptorProducer, Https};
 use server::{BackendPoolConfig, SharedData};
 use std::io;
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
 
@@ -73,19 +73,14 @@ async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resu
 
   let data = shared_data.load();
   for pool in &data.backend_pools {
-    match &pool.config {
-      BackendPoolConfig::HttpsConfig {
-        host,
-        certificate_path,
-        private_key_path,
-      } => tls::add_certificate(
-        &mut cert_resolver,
-        host.as_str(),
-        Path::new(certificate_path.as_str()),
-        Path::new(private_key_path.as_str()),
-      ),
-      _ => Ok(()),
-    }?
+    if let BackendPoolConfig::HttpsConfig {
+      host,
+      certificate_path,
+      private_key_path,
+    } = &pool.config
+    {
+      tls::add_certificate(&mut cert_resolver, host, certificate_path, private_key_path)?;
+    }
   }
   tls_config.cert_resolver = Arc::new(cert_resolver);
 

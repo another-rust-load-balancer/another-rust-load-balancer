@@ -1,4 +1,4 @@
-use super::{LoadBalancingContext, LoadBalancingStrategy, RequestForwarder};
+use super::{Context, LoadBalancingStrategy, RequestForwarder};
 use async_trait::async_trait;
 use cookie::{Cookie, SameSite};
 use hyper::{
@@ -68,7 +68,7 @@ impl StickyCookie {
 
 #[async_trait]
 impl LoadBalancingStrategy for StickyCookie {
-  fn select_backend<'l>(&'l self, request: &Request<Body>, context: &'l LoadBalancingContext) -> RequestForwarder {
+  fn select_backend<'l>(&'l self, request: &Request<Body>, context: &'l Context) -> RequestForwarder {
     let backend_address = self
       .try_parse_sticky_cookie(&request)
       .and_then(|cookie| context.backend_addresses.iter().find(|it| *it == cookie.value()));
@@ -77,7 +77,7 @@ impl LoadBalancingStrategy for StickyCookie {
       RequestForwarder::new(backend_address)
     } else {
       let backend = self.inner.select_backend(request, context);
-      let backend_address = backend.address;
+      let backend_address = backend.backend_address;
       backend.map_response(move |response| self.modify_response(response, backend_address))
     }
   }

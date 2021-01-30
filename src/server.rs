@@ -3,8 +3,8 @@ use crate::{
   health::Healthiness,
   http_client::StrategyNotifyHttpConnector,
   listeners::RemoteAddress,
-  load_balancing::{LoadBalancingContext, LoadBalancingStrategy},
-  middleware::RequestHandlerChain,
+  load_balancing::{self, LoadBalancingStrategy},
+  middleware::MiddlewareChain,
 };
 use arc_swap::ArcSwap;
 use futures::Future;
@@ -72,7 +72,7 @@ pub struct BackendPoolBuilder {
   addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
   strategy: Box<dyn LoadBalancingStrategy>,
   config: BackendPoolConfig,
-  chain: RequestHandlerChain,
+  chain: MiddlewareChain,
   pool_idle_timeout: Option<Duration>,
   pool_max_idle_per_host: Option<usize>,
 }
@@ -83,7 +83,7 @@ impl BackendPoolBuilder {
     addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
     strategy: Box<dyn LoadBalancingStrategy>,
     config: BackendPoolConfig,
-    chain: RequestHandlerChain,
+    chain: MiddlewareChain,
   ) -> BackendPoolBuilder {
     BackendPoolBuilder {
       matcher,
@@ -136,7 +136,7 @@ pub struct BackendPool {
   pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
   pub config: BackendPoolConfig,
   pub client: Client<StrategyNotifyHttpConnector, Body>,
-  pub chain: RequestHandlerChain,
+  pub chain: MiddlewareChain,
 }
 
 impl PartialEq for BackendPool {
@@ -221,13 +221,13 @@ impl Service<Request<Body>> for MainService {
           if healthy_addresses.is_empty() {
             Ok(bad_gateway())
           } else {
-            let context = LoadBalancingContext {
+            let context = load_balancing::Context {
               client_address: &client_address,
               backend_addresses: &healthy_addresses,
             };
             let backend = pool.strategy.select_backend(&request, &context);
             let result = backend
-              .forward_request(request, &pool.chain, &context, &pool.client)
+              .forward_request_through_middleware(request, &pool.chain, &client_address, &pool.client)
               .await;
             Ok(result)
           }
@@ -257,7 +257,7 @@ mod tests {
             )],
             Box::new(Random::new()),
             BackendPoolConfig::HttpConfig {},
-            RequestHandlerChain::Empty,
+            MiddlewareChain::Empty,
           )
           .build(),
         )],

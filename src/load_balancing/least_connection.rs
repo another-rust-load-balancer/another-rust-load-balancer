@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::RwLock};
 use hyper::{Body, Request, Uri};
 use rand::{thread_rng, Rng};
 
-use super::{LoadBalancingContext, LoadBalancingStrategy, RequestForwarder};
+use super::{Context, LoadBalancingStrategy, RequestForwarder};
 
 #[derive(Debug)]
 pub struct LeastConnection {
@@ -33,7 +33,7 @@ impl LoadBalancingStrategy for LeastConnection {
     }
   }
 
-  fn select_backend<'l>(&'l self, _request: &Request<Body>, context: &'l LoadBalancingContext) -> RequestForwarder {
+  fn select_backend<'l>(&'l self, _request: &Request<Body>, context: &'l Context) -> RequestForwarder {
     // ok to unwrap - only panics when we panic somewhere else :)
     let connections = self.connections.read().unwrap();
 
@@ -84,7 +84,7 @@ mod tests {
   pub fn least_connection_single_least_address() {
     let request = Request::builder().body(Body::empty()).unwrap();
 
-    let context = LoadBalancingContext {
+    let context = Context {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
       backend_addresses: &mut ["127.0.0.1:1".into(), "127.0.0.1:2".into()],
     };
@@ -94,7 +94,7 @@ mod tests {
     strategy.on_tcp_open(&"127.0.0.1:1".parse().unwrap());
 
     assert_eq!(
-      strategy.select_backend(&request, &context).address,
+      strategy.select_backend(&request, &context).backend_address,
       &context.backend_addresses[1]
     );
   }
@@ -103,7 +103,7 @@ mod tests {
   pub fn least_connection_multiple_least_addresses() {
     let request = Request::builder().body(Body::empty()).unwrap();
 
-    let context = LoadBalancingContext {
+    let context = Context {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
       backend_addresses: &mut ["127.0.0.1:1".into(), "127.0.0.1:2".into(), "127.0.0.1:3".into()],
     };
@@ -112,15 +112,15 @@ mod tests {
     strategy.on_tcp_open(&"127.0.0.1:1".parse().unwrap());
 
     assert_ne!(
-      strategy.select_backend(&request, &context).address,
+      strategy.select_backend(&request, &context).backend_address,
       &context.backend_addresses[0]
     );
     assert_ne!(
-      strategy.select_backend(&request, &context).address,
+      strategy.select_backend(&request, &context).backend_address,
       &context.backend_addresses[0]
     );
     assert_ne!(
-      strategy.select_backend(&request, &context).address,
+      strategy.select_backend(&request, &context).backend_address,
       &context.backend_addresses[0]
     );
   }

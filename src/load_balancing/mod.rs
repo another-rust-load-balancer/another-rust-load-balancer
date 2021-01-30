@@ -95,7 +95,7 @@ impl Middleware for RequestForwarder<'_> {
 impl Debug for RequestForwarder<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("RequestForwarder")
-      .field("address", &self.backend_address)
+      .field("backend_address", &self.backend_address)
       .finish()
   }
 }

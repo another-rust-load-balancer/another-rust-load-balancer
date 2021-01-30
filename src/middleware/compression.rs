@@ -1,4 +1,4 @@
-use super::{RequestHandler, RequestHandlerChain, RequestHandlerContext};
+use super::{Context, Middleware, MiddlewareChain};
 use async_compression::tokio::bufread::{BrotliEncoder, DeflateEncoder, GzipEncoder};
 use async_trait::async_trait;
 use futures::TryStreamExt;
@@ -21,15 +21,15 @@ use Encoding::{BROTLI, DEFLATE, GZIP};
 pub struct Compression {}
 
 #[async_trait]
-impl RequestHandler for Compression {
-  async fn handle_request(
+impl Middleware for Compression {
+  async fn forward_request(
     &self,
     request: Request<Body>,
-    next: &RequestHandlerChain,
-    context: &RequestHandlerContext<'_>,
+    chain: &MiddlewareChain,
+    context: &Context<'_>,
   ) -> Result<Response<Body>, Response<Body>> {
     let encoding = get_preferred_encoding(request.headers());
-    let mut response = next.handle_request(request, context).await?;
+    let mut response = chain.forward_request(request, context).await?;
     if let Some(encoding) = encoding {
       response = self.compress_response(response, &encoding)
     }

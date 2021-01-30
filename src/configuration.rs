@@ -1,7 +1,7 @@
 use crate::load_balancing::{ip_hash::IPHash, least_connection::LeastConnection};
 use crate::load_balancing::{round_robin::RoundRobin, sticky_cookie::StickyCookie};
 use crate::middleware::compression::Compression;
-use crate::middleware::{RequestHandler, RequestHandlerChain};
+use crate::middleware::{Middleware, MiddlewareChain};
 use crate::server::{BackendPool, BackendPoolConfig, SharedData};
 use crate::{health::Healthiness, load_balancing::LoadBalancingStrategy};
 use crate::{load_balancing::random::Random, server::BackendPoolBuilder};
@@ -101,7 +101,7 @@ impl From<StickyCookieSameSite> for cookie::SameSite {
   }
 }
 
-impl From<BackendConfigMiddleware> for Box<dyn RequestHandler> {
+impl From<BackendConfigMiddleware> for Box<dyn Middleware> {
   fn from(other: BackendConfigMiddleware) -> Self {
     match other {
       BackendConfigMiddleware::Compression { .. } => Box::new(Compression {}),
@@ -109,13 +109,13 @@ impl From<BackendConfigMiddleware> for Box<dyn RequestHandler> {
   }
 }
 
-impl From<Vec<BackendConfigMiddleware>> for RequestHandlerChain {
+impl From<Vec<BackendConfigMiddleware>> for MiddlewareChain {
   fn from(other: Vec<BackendConfigMiddleware>) -> Self {
-    let mut chain = Box::new(RequestHandlerChain::Empty);
+    let mut chain = Box::new(MiddlewareChain::Empty);
     for middleware in other.into_iter().rev() {
-      chain = Box::new(RequestHandlerChain::Entry {
-        handler: middleware.into(),
-        next: chain,
+      chain = Box::new(MiddlewareChain::Entry {
+        middleware: middleware.into(),
+        chain,
       });
     }
     *chain

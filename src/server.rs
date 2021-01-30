@@ -230,6 +230,7 @@ impl Service<Request<Body>> for MainService {
 mod tests {
   use super::*;
   use crate::load_balancing::random::Random;
+  use std::iter::FromIterator;
 
   fn generate_test_service(host: String, scheme: Scheme) -> MainService {
     MainService {

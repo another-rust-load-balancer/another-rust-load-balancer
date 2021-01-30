@@ -29,13 +29,11 @@ impl RequestHandler for Compression {
     context: &RequestHandlerContext<'_>,
   ) -> Result<Response<Body>, Response<Body>> {
     let encoding = get_preferred_encoding(request.headers());
-    next.handle_request(request, context).await.map(|response| {
-      if let Some(encoding) = encoding {
-        self.compress_response(response, &encoding)
-      } else {
-        response
-      }
-    })
+    let mut response = next.handle_request(request, context).await?;
+    if let Some(encoding) = encoding {
+      response = self.compress_response(response, &encoding)
+    }
+    Ok(response)
   }
 }
 

@@ -170,12 +170,12 @@ pub fn bad_gateway() -> Response<Body> {
 }
 
 impl MainService {
-  fn pool_by_req(&self, client_request: &Request<Body>) -> Option<Arc<BackendPool>> {
+  fn pool_by_req(&self, request: &Request<Body>) -> Option<Arc<BackendPool>> {
     self
       .shared_data
       .backend_pools
       .iter()
-      .find(|pool| pool.matcher.matches(client_request))
+      .find(|pool| pool.matcher.matches(request))
       .cloned()
   }
 

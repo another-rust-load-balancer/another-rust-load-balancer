@@ -40,18 +40,18 @@ impl RequestHandlerChain {
   }
 }
 
-fn backend_request(client_address: &SocketAddr, backend_uri: &Uri, client_request: Request<Body>) -> Request<Body> {
+fn backend_request(client_address: &SocketAddr, backend_uri: &Uri, request: Request<Body>) -> Request<Body> {
   let backend_req_builder = Request::builder().uri(backend_uri);
 
-  client_request
+  request
     .headers()
     .iter()
     .fold(backend_req_builder, |backend_req_builder, (key, val)| {
       backend_req_builder.header(key, val)
     })
     .header("x-forwarded-for", client_address.ip().to_string())
-    .method(client_request.method())
-    .body(client_request.into_body())
+    .method(request.method())
+    .body(request.into_body())
     .unwrap()
 }
 
@@ -63,21 +63,17 @@ pub trait RequestHandler: Send + Sync + std::fmt::Debug {
     next: &RequestHandlerChain,
     context: &RequestHandlerContext<'_>,
   ) -> Result<Response<Body>, Response<Body>> {
-    match self.modify_client_request(request, context) {
-      Ok(request) => next
-        .handle_request(request, context)
-        .await
-        .map(|response| self.modify_response(response, context)),
-      Err(response) => Err(response),
-    }
+    let request = self.modify_request(request, context)?;
+    let response = next.handle_request(request, context).await?;
+    Ok(self.modify_response(response, context))
   }
 
-  fn modify_client_request(
+  fn modify_request(
     &self,
-    client_request: Request<Body>,
+    request: Request<Body>,
     _context: &RequestHandlerContext,
   ) -> Result<Request<Body>, Response<Body>> {
-    Ok(client_request)
+    Ok(request)
   }
 
   fn modify_response(&self, response: Response<Body>, _context: &RequestHandlerContext) -> Response<Body> {

@@ -2,14 +2,14 @@ use crate::configuration::BackendConfigWatcher;
 use arc_swap::ArcSwap;
 use clap::{App, Arg};
 use listeners::{AcceptorProducer, Https};
-use server::{BackendPoolConfig, SharedData};
-use std::io;
-use std::sync::Arc;
+use server::{Scheme, SharedData};
+use std::{io, sync::Arc};
 use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
 
 mod backend_pool_matcher;
 mod configuration;
+mod error_response;
 mod health;
 mod http_client;
 mod listeners;
@@ -18,6 +18,7 @@ mod logging;
 mod middleware;
 mod server;
 mod tls;
+mod utils;
 
 const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:80";
 const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:443";
@@ -64,7 +65,7 @@ async fn listen_for_http_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resul
   let http = listeners::Http {};
   let acceptor = http.produce_acceptor(LOCAL_HTTP_ADDRESS).await?;
 
-  server::create(acceptor, shared_data, false).await
+  server::create(acceptor, shared_data, Scheme::HTTP).await
 }
 
 async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
@@ -73,13 +74,13 @@ async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resu
 
   let data = shared_data.load();
   for pool in &data.backend_pools {
-    if let BackendPoolConfig::HttpsConfig {
-      host,
-      certificate_path,
-      private_key_path,
-    } = &pool.config
-    {
-      tls::add_certificate(&mut cert_resolver, host, certificate_path, private_key_path)?;
+    for (sni_name, certificate) in &pool.certificates {
+      tls::add_certificate(
+        &mut cert_resolver,
+        &sni_name,
+        &certificate.certificate_path,
+        &certificate.private_key_path,
+      )?;
     }
   }
   tls_config.cert_resolver = Arc::new(cert_resolver);
@@ -87,5 +88,5 @@ async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resu
   let https = Https { tls_config };
   let acceptor = https.produce_acceptor(LOCAL_HTTPS_ADDRESS).await?;
 
-  server::create(acceptor, shared_data, true).await
+  server::create(acceptor, shared_data, Scheme::HTTPS).await
 }

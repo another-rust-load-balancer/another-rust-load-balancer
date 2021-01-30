@@ -1,4 +1,4 @@
-use crate::{http_client::StrategyNotifyHttpConnector, server::handle_bad_gateway};
+use crate::{error_response::handle_bad_gateway, http_client::StrategyNotifyHttpConnector, server::Scheme};
 use async_trait::async_trait;
 use hyper::{Body, Client, Request, Response, Uri};
 use std::net::SocketAddr;
@@ -29,6 +29,7 @@ pub trait Middleware: Send + Sync + std::fmt::Debug {
 }
 
 pub struct Context<'l> {
+  pub client_scheme: &'l Scheme,
   pub client_address: &'l SocketAddr,
   pub backend_uri: Uri,
   pub client: &'l Client<StrategyNotifyHttpConnector, Body>,

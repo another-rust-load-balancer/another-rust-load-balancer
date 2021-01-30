@@ -1,6 +1,7 @@
 use crate::{
   http_client::StrategyNotifyHttpConnector,
   middleware::{self, Middleware, MiddlewareChain},
+  server::Scheme,
 };
 use async_trait::async_trait;
 use hyper::{Body, Client, Request, Response, Uri};
@@ -61,10 +62,12 @@ impl<'l> RequestForwarder<'l> {
     &self,
     request: Request<Body>,
     chain: &MiddlewareChain,
+    client_scheme: &Scheme,
     client_address: &SocketAddr,
     client: &Client<StrategyNotifyHttpConnector, Body>,
   ) -> Response<Body> {
     let context = middleware::Context {
+      client_scheme,
       client_address,
       backend_uri: self.backend_uri(&request),
       client,

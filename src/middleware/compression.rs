@@ -1,3 +1,5 @@
+use crate::utils::split_once;
+
 use super::{Context, Middleware, MiddlewareChain};
 use async_compression::tokio::bufread::{BrotliEncoder, DeflateEncoder, GzipEncoder};
 use async_trait::async_trait;
@@ -139,14 +141,6 @@ fn parse_qvalue(qvalue: &str) -> Option<u32> {
     let qvalue = qvalue.strip_prefix("0.").filter(|digits| digits.len() <= 3)?;
     format!("{:0<3}", qvalue).parse().ok().filter(|qvalue| *qvalue != 0)
   }
-}
-
-/// This is a stable alternative to rust's unstable feature [str_split_once](https://github.com/rust-lang/rust/issues/74773).
-fn split_once(string: &str, pattern: char) -> Option<(&str, &str)> {
-  let mut splitter = string.splitn(2, pattern);
-  let first = splitter.next()?;
-  let second = splitter.next()?;
-  Some((first, second))
 }
 
 #[cfg(test)]

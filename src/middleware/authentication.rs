@@ -1,63 +1,72 @@
-use super::{compression::split_once, RequestHandler, RequestHandlerChain, RequestHandlerContext};
-use async_trait::async_trait;
+use super::{RequestHandler, RequestHandlerContext};
+use http_auth_basic::Credentials;
 use hyper::{
   header::{AUTHORIZATION, WWW_AUTHENTICATE},
   Body, HeaderMap, Request, Response, StatusCode,
 };
-use log::debug;
-// TODO 2021-01-26 19:00:52.131554068 ERROR another_rust_load_balancer::middleware - error trying to connect: tcp connect error: Connection refused (os error 111)
+use std::{
+  fs::File,
+  io::{BufRead, BufReader},
+};
 
 #[derive(Debug)]
 pub struct Authentication {}
 
-#[async_trait]
 impl RequestHandler for Authentication {
-  async fn handle_request(
+  fn modify_client_request(
     &self,
-    request: Request<Body>,
-    next: &RequestHandlerChain,
-    context: &RequestHandlerContext<'_>,
-  ) -> Result<Response<Body>, Response<Body>> {
-    let basic_auth_data = get_basic_auth_data(request.headers());
-    debug!("{:#?}", basic_auth_data);
+    client_request: Request<Body>,
+    _context: &RequestHandlerContext,
+  ) -> Result<Request<Body>, Response<Body>> {
+    let basic_auth_data = get_basic_auth_data(client_request.headers());
     if let Some(credentials) = basic_auth_data {
-      // authenticate (db request)
-      debug!("{}", credentials);
-      next.handle_request(request, context).await
-    //call next handler
+      if authenticate_user(&credentials) {
+        Ok(client_request)
+      } else {
+        Err(response_unauthorized())
+      }
     } else {
-      let response_builder = Response::builder();
-      let response = response_builder
-        .header(
-          WWW_AUTHENTICATE,
-          "Basic realm=\"Another Rust Load Balancer requires authentication\"",
-        )
-        .status(StatusCode::UNAUTHORIZED)
-        .body(Body::from("401 - unauthorized"))
-        .unwrap();
-      Err(response)
-    }
-  }
-}
-#[derive(Debug)]
-enum AuthenticationScheme {
-  BASIC,
-}
-
-impl AuthenticationScheme {
-  fn from_str(s: &str) -> Option<AuthenticationScheme> {
-    match s {
-      "Basic" => Some(AuthenticationScheme::BASIC),
-      _ => None,
+      Err(response_unauthorized())
     }
   }
 }
 
-fn get_basic_auth_data(headers: &HeaderMap) -> Option<&str> {
+fn response_unauthorized() -> Response<Body> {
+  let response_builder = Response::builder();
+  let response = response_builder
+    .header(
+      WWW_AUTHENTICATE,
+      "Basic realm=\"Another Rust Load Balancer requires authentication\"",
+    )
+    .status(StatusCode::UNAUTHORIZED)
+    .body(Body::from("401 - unauthorized"))
+    .unwrap();
+  response
+}
+
+fn authenticate_user(credentials: &str) -> bool {
+  let file = File::open("src/middleware/properties.txt");
+  match file {
+    Ok(f) => {
+      let reader = BufReader::new(f);
+      for line in reader.lines() {
+        if let Ok(l) = line {
+          if credentials.to_string() == l {
+            return true;
+          }
+        }
+      }
+      false
+    }
+    _ => false,
+  }
+}
+
+fn get_basic_auth_data(headers: &HeaderMap) -> Option<String> {
   let auth_data = headers.get(AUTHORIZATION)?.to_str().ok()?;
-  let (auth_scheme, credentials) = split_once(auth_data, ' ')?;
-  if let Some(AuthenticationScheme::BASIC) = AuthenticationScheme::from_str(auth_scheme) {
-    Some(credentials)
+  let credentials = Credentials::from_header(auth_data.to_string());
+  if let Ok(credentials) = credentials {
+    Some(format!("{}={}", credentials.user_id, credentials.password).to_string())
   } else {
     None
   }
@@ -103,5 +112,27 @@ mod tests {
 
     // then:
     assert_ne!(auth_data, None);
+  }
+
+  #[test]
+  fn test_authenticate_user_authorized() {
+    let credential_string = "tyrion=foo";
+    let auth = authenticate_user(&credential_string);
+    let mut result = false;
+    if auth {
+      result = true;
+    }
+    assert_eq!(true, result)
+  }
+
+  #[test]
+  fn test_authenticate_user_unauthorized() {
+    let credential_string = "tyrion=bar";
+    let auth = authenticate_user(&credential_string);
+    let mut result = false;
+    if auth {
+      result = true;
+    }
+    assert_eq!(false, result)
   }
 }

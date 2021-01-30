@@ -104,6 +104,7 @@ impl BackendPoolMatcher {
 /// "Host('google.de') || Path('/admin')"
 /// "Host('google.de') && Query('admin', 'true')"
 /// "Host('google.de') && Method('GET')"
+/// "Host('google.de') && ( Path('/admin') || Path('/moderator') )"
 /// ```
 fn parser<'a>() -> Parser<'a, char, BackendPoolMatcher> {
   space() * top_level_expression() - end()

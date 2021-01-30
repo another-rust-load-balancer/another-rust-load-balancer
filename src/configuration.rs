@@ -1,19 +1,22 @@
-use crate::load_balancing::{ip_hash::IPHash, least_connection::LeastConnection};
-use crate::load_balancing::{round_robin::RoundRobin, sticky_cookie::StickyCookie};
-use crate::middleware::compression::Compression;
-use crate::middleware::{Middleware, MiddlewareChain};
-use crate::server::{BackendPool, BackendPoolConfig, SharedData};
-use crate::{health::Healthiness, load_balancing::LoadBalancingStrategy};
-use crate::{load_balancing::random::Random, server::BackendPoolBuilder};
+use crate::{
+  health::Healthiness,
+  load_balancing::{
+    ip_hash::IPHash, least_connection::LeastConnection, random::Random, round_robin::RoundRobin,
+    sticky_cookie::StickyCookie, LoadBalancingStrategy,
+  },
+  middleware::{compression::Compression, https_redirector::HttpsRedirector, Middleware, MiddlewareChain},
+  server::{BackendPool, BackendPoolBuilder, BackendPoolConfig, SharedData},
+};
 use arc_swap::ArcSwap;
 use futures::Future;
 use log::{error, info, warn};
 use notify::{watcher, DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
-use std::fs;
-use std::sync::mpsc::channel;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+  fs,
+  sync::{mpsc::channel, Arc},
+  time::Duration,
+};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
@@ -35,7 +38,8 @@ pub enum StickyCookieSameSite {
 
 #[derive(Debug, Deserialize, PartialEq)]
 enum BackendConfigMiddleware {
-  Compression {},
+  Compression,
+  HttpsRedirector,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -47,10 +51,10 @@ enum BackendConfigLBStrategy {
     same_site: StickyCookieSameSite,
     inner: Box<BackendConfigLBStrategy>,
   },
-  Random {},
-  IPHash {},
-  LeastConnection {},
-  RoundRobin {},
+  Random,
+  IPHash,
+  LeastConnection,
+  RoundRobin,
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,7 +108,8 @@ impl From<StickyCookieSameSite> for cookie::SameSite {
 impl From<BackendConfigMiddleware> for Box<dyn Middleware> {
   fn from(other: BackendConfigMiddleware) -> Self {
     match other {
-      BackendConfigMiddleware::Compression { .. } => Box::new(Compression {}),
+      BackendConfigMiddleware::Compression => Box::new(Compression {}),
+      BackendConfigMiddleware::HttpsRedirector => Box::new(HttpsRedirector {}),
     }
   }
 }

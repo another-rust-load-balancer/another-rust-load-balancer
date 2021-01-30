@@ -60,7 +60,7 @@ where
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum BackendPoolConfig {
-  HttpConfig {},
+  HttpConfig,
   HttpsConfig {
     host: String,
     certificate_path: String,

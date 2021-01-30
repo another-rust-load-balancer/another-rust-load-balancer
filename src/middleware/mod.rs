@@ -1,10 +1,10 @@
-use crate::{http_client::StrategyNotifyHttpConnector, server::bad_gateway};
+use crate::{http_client::StrategyNotifyHttpConnector, server::handle_bad_gateway};
 use async_trait::async_trait;
 use hyper::{Body, Client, Request, Response, Uri};
-use log::error;
 use std::net::SocketAddr;
 
 pub mod compression;
+pub mod https_redirector;
 
 #[async_trait]
 pub trait Middleware: Send + Sync + std::fmt::Debug {
@@ -53,10 +53,11 @@ impl MiddlewareChain {
       MiddlewareChain::Entry { middleware, chain } => middleware.forward_request(request, &chain, &context).await,
       MiddlewareChain::Empty => {
         let backend_request = backend_request(request, &context.backend_uri, context.client_address);
-        context.client.request(backend_request).await.map_err(|error| {
-          error!("{}", error);
-          bad_gateway()
-        })
+        context
+          .client
+          .request(backend_request)
+          .await
+          .map_err(handle_bad_gateway)
       }
     }
   }

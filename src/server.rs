@@ -14,8 +14,9 @@ use hyper::{
   service::{make_service_fn, Service},
   Body, Client, Request, Response, Server, StatusCode,
 };
-use log::debug;
+use log::{debug, error};
 use std::{
+  error::Error,
   io,
   net::SocketAddr,
   pin::Pin,
@@ -33,7 +34,7 @@ pub async fn create<'a, I, IE, IO>(
 ) -> Result<(), io::Error>
 where
   I: Accept<Conn = IO, Error = IE>,
-  IE: Into<Box<dyn std::error::Error + Send + Sync>>,
+  IE: Into<Box<dyn Error + Send + Sync>>,
   IO: AsyncRead + AsyncWrite + Unpin + Send + RemoteAddress + 'static,
 {
   let service = make_service_fn(move |stream: &IO| {
@@ -162,11 +163,32 @@ fn not_found() -> Response<Body> {
     .unwrap()
 }
 
+pub fn handle_bad_gateway<E: Error>(error: E) -> Response<Body> {
+  log_error(error);
+  bad_gateway()
+}
+
 pub fn bad_gateway() -> Response<Body> {
   Response::builder()
     .status(StatusCode::BAD_GATEWAY)
     .body(Body::empty())
     .unwrap()
+}
+
+pub fn handle_internal_server_error<E: Error>(error: E) -> Response<Body> {
+  log_error(error);
+  internal_server_error()
+}
+
+pub fn internal_server_error() -> Response<Body> {
+  Response::builder()
+    .status(StatusCode::INTERNAL_SERVER_ERROR)
+    .body(Body::empty())
+    .unwrap()
+}
+
+pub fn log_error<E: Error>(error: E) {
+  error!("{}", error);
 }
 
 impl MainService {

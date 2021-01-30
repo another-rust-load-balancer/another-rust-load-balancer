@@ -61,6 +61,8 @@ mod tests {
   use super::*;
 
   #[tokio::test]
+  #[ignore]
+  //run with cargo test middleware::authentication::tests::test_user_authentication_no_header -- --ignored
   async fn test_user_authentication_no_header() {
     // given:
     let headers = HeaderMap::new();
@@ -73,6 +75,7 @@ mod tests {
   }
 
   #[tokio::test]
+  #[ignore]
   async fn test_user_authentication_wrong_protocol() {
     // given:
     let mut headers = HeaderMap::new();
@@ -86,6 +89,7 @@ mod tests {
   }
 
   #[tokio::test]
+  #[ignore]
   async fn test_user_authentication_basic_authorized() {
     // given:
     let mut headers = HeaderMap::new();
@@ -99,6 +103,7 @@ mod tests {
   }
 
   #[tokio::test]
+  #[ignore]
   async fn test_user_authentication_basic_unauthorized() {
     // given:
     let mut headers = HeaderMap::new();

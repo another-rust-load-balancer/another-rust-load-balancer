@@ -1,4 +1,4 @@
-use super::{RequestHandler, RequestHandlerContext};
+use super::{Context, Middleware};
 use http_auth_basic::Credentials;
 use hyper::{
   header::{AUTHORIZATION, WWW_AUTHENTICATE},
@@ -12,23 +12,34 @@ use std::{
 #[derive(Debug)]
 pub struct Authentication {}
 
-impl RequestHandler for Authentication {
-  fn modify_client_request(
-    &self,
-    client_request: Request<Body>,
-    _context: &RequestHandlerContext,
-  ) -> Result<Request<Body>, Response<Body>> {
-    let basic_auth_data = get_basic_auth_data(client_request.headers());
-    if let Some(credentials) = basic_auth_data {
-      if authenticate_user(&credentials) {
-        Ok(client_request)
-      } else {
-        Err(response_unauthorized())
-      }
+impl Middleware for Authentication {
+  fn modify_request(&self, request: Request<Body>, _context: &Context) -> Result<Request<Body>, Response<Body>> {
+    if user_authentication(request.headers()).is_some() {
+      Ok(request)
     } else {
       Err(response_unauthorized())
     }
   }
+}
+
+fn user_authentication(headers: &HeaderMap) -> Option<()> {
+  let auth_data = headers.get(AUTHORIZATION)?.to_str().ok()?;
+  let credentials = Credentials::from_header(auth_data.to_string()).ok()?;
+  check_user_credentials(&credentials.user_id, &credentials.password)
+}
+
+fn check_user_credentials(user: &str, password: &str) -> Option<()> {
+  let file = File::open("src/middleware/properties.txt").ok()?;
+  let reader = BufReader::new(file);
+  for line in reader.lines() {
+    if let Ok(l) = line {
+      let credentials = format!("{}={}", user, password);
+      if credentials == l {
+        return Some(());
+      }
+    }
+  }
+  None
 }
 
 fn response_unauthorized() -> Response<Body> {
@@ -44,95 +55,58 @@ fn response_unauthorized() -> Response<Body> {
   response
 }
 
-fn authenticate_user(credentials: &str) -> bool {
-  let file = File::open("src/middleware/properties.txt");
-  match file {
-    Ok(f) => {
-      let reader = BufReader::new(f);
-      for line in reader.lines() {
-        if let Ok(l) = line {
-          if credentials.to_string() == l {
-            return true;
-          }
-        }
-      }
-      false
-    }
-    _ => false,
-  }
-}
-
-fn get_basic_auth_data(headers: &HeaderMap) -> Option<String> {
-  let auth_data = headers.get(AUTHORIZATION)?.to_str().ok()?;
-  let credentials = Credentials::from_header(auth_data.to_string());
-  if let Ok(credentials) = credentials {
-    Some(format!("{}={}", credentials.user_id, credentials.password).to_string())
-  } else {
-    None
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
 
   #[test]
-  fn test_get_auth_data_no_auth_header() {
+  fn test_user_authentication_no_header() {
     // given:
     let headers = HeaderMap::new();
 
     // when:
-    let auth_data = get_basic_auth_data(&headers);
+    let auth_data = user_authentication(&headers);
 
     // then:
-    assert_eq!(auth_data, None);
+    assert!(auth_data.is_none());
   }
 
   #[test]
-  fn test_get_auth_data_wrong_protocol() {
+  fn test_user_authentication_wrong_protocol() {
     // given:
     let mut headers = HeaderMap::new();
     headers.insert(AUTHORIZATION, "Bearer fpKL54jvWmEGVoRdCNjG".parse().unwrap());
 
     // when:
-    let auth_data = get_basic_auth_data(&headers);
+    let auth_data = user_authentication(&headers);
 
     // then:
-    assert_eq!(auth_data, None);
+    assert!(auth_data.is_none());
   }
 
   #[test]
-  fn test_get_auth_data_basic() {
+  fn test_user_authentication_basic_authorized() {
     // given:
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, "Basic d2lraTpwZWRpYQ==".parse().unwrap());
+    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmZvbw==".parse().unwrap());
 
     // when:
-    let auth_data = get_basic_auth_data(&headers);
+    let auth_data = user_authentication(&headers);
 
     // then:
-    assert_ne!(auth_data, None);
+    assert!(auth_data.is_some());
   }
 
   #[test]
-  fn test_authenticate_user_authorized() {
-    let credential_string = "tyrion=foo";
-    let auth = authenticate_user(&credential_string);
-    let mut result = false;
-    if auth {
-      result = true;
-    }
-    assert_eq!(true, result)
-  }
+  fn test_user_authentication_basic_unauthorized() {
+    // given:
+    let mut headers = HeaderMap::new();
+    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmZvbwP==".parse().unwrap());
 
-  #[test]
-  fn test_authenticate_user_unauthorized() {
-    let credential_string = "tyrion=bar";
-    let auth = authenticate_user(&credential_string);
-    let mut result = false;
-    if auth {
-      result = true;
-    }
-    assert_eq!(false, result)
+    // when:
+    let auth_data = user_authentication(&headers);
+
+    // then:
+    assert!(auth_data.is_none());
   }
 }

@@ -14,11 +14,13 @@ use notify::{watcher, DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher
 use serde::Deserialize;
 use std::{
   collections::{HashMap, HashSet},
+  convert::{TryFrom, TryInto},
   fs,
   sync::{mpsc::channel, Arc},
   time::Duration,
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use toml::{value::Table, Value};
 
 pub struct BackendConfigWatcher {
   toml_path: String,
@@ -91,7 +93,7 @@ impl BackendConfigWatcher {
 #[derive(Debug, Deserialize)]
 struct Config {
   backend_pools: Vec<BackendPoolConfig>,
-  #[serde(default = "HashMap::new")]
+  #[serde(default)]
   certificates: HashMap<String, CertificateConfig>,
 }
 
@@ -151,10 +153,11 @@ impl From<Config> for SharedData {
 struct BackendPoolConfig {
   matcher: String,
   addresses: Vec<String>,
-  strategy: LoadBalancingStrategyConfig,
-  chain: Vec<MiddlewareConfig>,
-  client: Option<ClientConfig>,
   schemes: HashSet<Scheme>,
+  client: Option<ClientConfig>,
+  strategy: LoadBalancingStrategyConfig,
+  #[serde(default)]
+  middlewares: Table,
 }
 
 impl From<BackendPoolConfig> for BackendPool {
@@ -167,7 +170,7 @@ impl From<BackendPoolConfig> for BackendPool {
       .map(|address| (address, Arc::new(ArcSwap::from_pointee(Healthiness::Healthy))))
       .collect();
     let strategy = other.strategy.into();
-    let chain = other.chain.into();
+    let chain = other.middlewares.into();
     let schemes = other.schemes;
 
     let mut builder = BackendPoolBuilder::new(matcher, addresses, strategy, chain, schemes);
@@ -183,6 +186,12 @@ impl From<BackendPoolConfig> for BackendPool {
 
     builder.build()
   }
+}
+
+#[derive(Debug, Deserialize)]
+struct ClientConfig {
+  pool_idle_timeout: Option<Duration>,
+  pool_max_idle_per_host: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -244,47 +253,35 @@ impl From<StickyCookieSameSite> for cookie::SameSite {
   }
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
-enum MiddlewareConfig {
-  Compression,
-  HttpsRedirector,
-}
-
-impl From<MiddlewareConfig> for Box<dyn Middleware> {
-  fn from(other: MiddlewareConfig) -> Self {
-    match other {
-      MiddlewareConfig::Compression => Box::new(Compression {}),
-      MiddlewareConfig::HttpsRedirector => Box::new(HttpsRedirector {}),
-    }
-  }
-}
-
-impl From<Vec<MiddlewareConfig>> for MiddlewareChain {
-  fn from(other: Vec<MiddlewareConfig>) -> Self {
-    let mut chain = Box::new(MiddlewareChain::Empty);
+impl From<Table> for MiddlewareChain {
+  fn from(other: Table) -> Self {
+    let mut chain = MiddlewareChain::Empty;
     for middleware in other.into_iter().rev() {
-      chain = Box::new(MiddlewareChain::Entry {
-        middleware: middleware.into(),
-        chain,
-      });
+      if let Ok(middleware) = middleware.try_into() {
+        chain = MiddlewareChain::Entry {
+          middleware,
+          chain: Box::new(chain),
+        };
+      }
     }
-    *chain
+    chain
   }
 }
 
-#[derive(Debug, Deserialize)]
-struct ClientConfig {
-  pool_idle_timeout: Option<Duration>,
-  pool_max_idle_per_host: Option<usize>,
+impl TryFrom<(String, Value)> for Box<dyn Middleware> {
+  type Error = ();
+
+  fn try_from((name, _payload): (String, Value)) -> Result<Self, Self::Error> {
+    match name.as_str() {
+      "Compression" => Ok(Box::new(Compression)),
+      "HttpsRedirector" => Ok(Box::new(HttpsRedirector)),
+      _ => Err(()),
+    }
+  }
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CertificateConfig {
   pub certificate_path: String,
   pub private_key_path: String,
-}
-
-/// See https://github.com/serde-rs/serde/issues/1030
-fn _true() -> bool {
-  true
 }

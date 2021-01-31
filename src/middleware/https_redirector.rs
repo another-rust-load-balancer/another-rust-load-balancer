@@ -12,7 +12,7 @@ use log::debug;
 use std::convert::TryFrom;
 
 #[derive(Debug)]
-pub struct HttpsRedirector {}
+pub struct HttpsRedirector;
 
 impl Middleware for HttpsRedirector {
   fn modify_request(&self, request: Request<Body>, context: &Context) -> Result<Request<Body>, Response<Body>> {

@@ -20,7 +20,7 @@ use tokio_util::{
 use Encoding::{BROTLI, DEFLATE, GZIP};
 
 #[derive(Debug)]
-pub struct Compression {}
+pub struct Compression;
 
 #[async_trait]
 impl Middleware for Compression {

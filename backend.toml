@@ -1,9 +1,9 @@
 ## Pool 1
 [[backend_pools]]
 # this matches *.whoami.localhost and whoami.localhost
-matcher="HostRegexp('(.*\\.)?whoami\\.localhost$')"
-addresses=["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"]
-strategy={ StickyCookie = {cookie_name="lb_cookie", http_only=false, secure=false, same_site= { Lax = {} }, inner = { RoundRobin = {} }} }
+matcher = "HostRegexp('(.*\\.)?whoami\\.localhost$')"
+addresses = ["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"]
+strategy = { StickyCookie = { cookie_name = "lb_cookie", http_only = false, secure = false, same_site = { Lax = {} }, inner = { RoundRobin = {} } } }
 chain = [
     { Compression = {} },
 ]
@@ -11,18 +11,23 @@ schemes = ["HTTP"]
 
 ## Pool 2
 [[backend_pools]]
-matcher="Host('httpbin.localhost')"
-addresses=["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
-strategy={ Random = {} }
-chain = [ { Compression = {} } ]
+matcher = "Host('httpbin.localhost')"
+addresses = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
+strategy = { Random = {} }
+chain = [
+    { Compression = {} },
+]
 schemes = ["HTTP"]
 
 ## Pool 3
 [[backend_pools]]
-matcher="Host('https.localhost')"
-addresses=["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
-strategy={ IPHash = {} }
-chain = [ { HttpsRedirector = {} }, { Compression = {} } ]
+matcher = "Host('https.localhost')"
+addresses = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
+strategy = { IPHash = {} }
+chain = [
+    { HttpsRedirector = {} },
+    { Compression = {} }
+]
 schemes = ["HTTP", "HTTPS"]
 
 ## Pool 4
@@ -30,7 +35,9 @@ schemes = ["HTTP", "HTTPS"]
 matcher = "Host('www.arlb.de')"
 addresses = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
 strategy = { Random = {} }
-chain = [ { Compression = {} } ]
+chain = [
+    { Compression = {} }
+]
 schemes = ["HTTP", "HTTPS"]
 
 [certificates]

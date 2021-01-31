@@ -21,6 +21,7 @@ use serde::Deserialize;
 use std::{
   collections::{HashMap, HashSet},
   error::Error,
+  fmt::Display,
   io,
   net::SocketAddr,
   pin::Pin,
@@ -161,6 +162,15 @@ pub struct SharedData {
 pub enum Scheme {
   HTTP,
   HTTPS,
+}
+
+impl Display for Scheme {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Scheme::HTTP => write!(f, "http"),
+      Scheme::HTTPS => write!(f, "https"),
+    }
+  }
 }
 
 impl MainService {

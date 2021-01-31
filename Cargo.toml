@@ -17,6 +17,7 @@ clap = "2.33"
 cookie = "0.14"
 futures = "0.3"
 futures-util = "0.3"
+gethostname = "0.2"
 hyper = { version = "0.14", features = ["client", "server", "http1", "http2", "stream"] }
 hyper-rustls = "0.22"
 log = "0.4"

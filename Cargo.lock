@@ -44,6 +44,7 @@ dependencies = [
  "cookie",
  "futures",
  "futures-util",
+ "gethostname",
  "hyper",
  "hyper-rustls",
  "log",
@@ -495,6 +496,16 @@ dependencies = [
  "proc-macro-hack",
  "proc-macro-nested",
  "slab",
+]
+
+[[package]]
+name = "gethostname"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e692e296bfac1d2533ef168d0b60ff5897b8b70a4009276834014dd8924cc028"
+dependencies = [
+ "libc",
+ "winapi 0.3.9",
 ]
 
 [[package]]

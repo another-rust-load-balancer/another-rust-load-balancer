@@ -1,5 +1,6 @@
 use crate::{error_response::handle_bad_gateway, http_client::StrategyNotifyHttpConnector, server::Scheme};
 use async_trait::async_trait;
+use gethostname::gethostname;
 use hyper::{Body, Client, Request, Response, Uri};
 use std::net::SocketAddr;
 
@@ -53,7 +54,7 @@ impl MiddlewareChain {
     match self {
       MiddlewareChain::Entry { middleware, chain } => middleware.forward_request(request, &chain, &context).await,
       MiddlewareChain::Empty => {
-        let backend_request = backend_request(request, &context.backend_uri, context.client_address);
+        let backend_request = backend_request(request, context);
         context
           .client
           .request(backend_request)
@@ -64,15 +65,30 @@ impl MiddlewareChain {
   }
 }
 
-fn backend_request(request: Request<Body>, backend_uri: &Uri, client_address: &SocketAddr) -> Request<Body> {
-  let builder = Request::builder().uri(backend_uri);
+fn backend_request(request: Request<Body>, context: &Context) -> Request<Body> {
+  let builder = Request::builder().uri(&context.backend_uri);
+  let hostname = gethostname().into_string().ok();
 
-  request
+  let mut builder = request
     .headers()
     .iter()
     .fold(builder, |builder, (key, val)| builder.header(key, val))
-    .header("x-forwarded-for", client_address.ip().to_string())
-    .method(request.method())
-    .body(request.into_body())
-    .unwrap()
+    .header("x-forwarded-for", context.client_address.ip().to_string())
+    .header(
+      "x-forwarded-port",
+      match context.client_scheme {
+        Scheme::HTTP => "80",
+        Scheme::HTTPS => "443",
+      },
+    )
+    .header("x-forwarded-proto", context.client_scheme.to_string())
+    .method(request.method());
+
+  builder = if let Some(hostname) = hostname {
+    builder.header("x-forwarded-server", hostname)
+  } else {
+    builder
+  };
+
+  builder.body(request.into_body()).unwrap()
 }

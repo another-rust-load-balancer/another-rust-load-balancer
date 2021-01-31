@@ -31,5 +31,5 @@ serde = { version = "1.0", features = ["derive"] }
 tokio = {version = "1.0", features = ["full"] }
 tokio-rustls = "0.22"
 tokio-util = { version = "0.6", features = ["full"] }
-toml = "0.5"
+toml = { version = "0.5", features = ["preserve_order"] }
 url = "2.2"

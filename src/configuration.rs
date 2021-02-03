@@ -4,7 +4,7 @@ use crate::{
     ip_hash::IPHash, least_connection::LeastConnection, random::Random, round_robin::RoundRobin,
     sticky_cookie::StickyCookie, LoadBalancingStrategy,
   },
-  middleware::{compression::Compression, https_redirector::HttpsRedirector, Middleware, MiddlewareChain},
+  middleware::{compression::Compression, https_redirector::HttpsRedirector, maxbodysize::MaxBodySize, Middleware, MiddlewareChain},
   server::{BackendPool, BackendPoolBuilder, Scheme, SharedData},
 };
 use arc_swap::ArcSwap;
@@ -21,6 +21,7 @@ use std::{
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use toml::{value::Table, Value};
+use toml::value::Value::Integer;
 
 pub struct BackendConfigWatcher {
   toml_path: String,
@@ -271,10 +272,11 @@ impl From<Table> for MiddlewareChain {
 impl TryFrom<(String, Value)> for Box<dyn Middleware> {
   type Error = ();
 
-  fn try_from((name, _payload): (String, Value)) -> Result<Self, Self::Error> {
-    match name.as_str() {
-      "Compression" => Ok(Box::new(Compression)),
-      "HttpsRedirector" => Ok(Box::new(HttpsRedirector)),
+  fn try_from((name, payload): (String, Value)) -> Result<Self, Self::Error> {
+    match (name.as_str(), payload) {
+      ("Compression", _) => Ok(Box::new(Compression)),
+      ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),
+      ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize{limit})),
       _ => Err(()),
     }
   }

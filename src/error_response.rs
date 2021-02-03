@@ -46,3 +46,10 @@ pub fn internal_server_error() -> Response<Body> {
 pub fn log_error<E: Error>(error: E) {
   error!("{}", error);
 }
+
+pub fn request_entity_to_large() -> Response<Body> {
+  Response::builder()
+      .status(StatusCode::PAYLOAD_TOO_LARGE)
+      .body(Body::empty())
+      .unwrap()
+}

@@ -6,6 +6,7 @@ use std::net::SocketAddr;
 
 pub mod compression;
 pub mod https_redirector;
+pub mod maxbodysize;
 
 #[async_trait]
 pub trait Middleware: Send + Sync + std::fmt::Debug {

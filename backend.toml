@@ -35,6 +35,7 @@ schemes = ["HTTP", "HTTPS"]
 strategy = { Random = {} }
 [backend_pools.middlewares]
 Compression = {}
+MaxBodySize = 256
 
 [certificates]
 "www.arlb.de" = { certificate_path = "x509/www.arlb.de.cer", private_key_path = "x509/www.arlb.de.key" }

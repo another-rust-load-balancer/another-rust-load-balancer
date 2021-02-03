@@ -257,7 +257,10 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
 
   fn try_from((name, payload): (String, Value)) -> Result<Self, Self::Error> {
     match (name.as_str(), payload) {
-      ("Authentication", _) => Ok(Box::new(Authentication)),
+      ("Authentication", _) => Ok(Box::new(Authentication {
+        ldap_address,
+        user_directory,
+      })),
       ("Compression", _) => Ok(Box::new(Compression)),
       ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),
       ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize { limit })),

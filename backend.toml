@@ -2,7 +2,7 @@
 [[backend_pools]]
 # this matches *.whoami.localhost and whoami.localhost
 matcher = "HostRegexp('(.*\\.)?whoami\\.localhost$')"
-addresses = ["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"]
+addresses = ["[::1]:8084", "127.0.0.1:8085", "[2001:3200:3200::1:6]:80"]
 schemes = ["HTTP"]
 strategy = { StickyCookie = { cookie_name = "lb_cookie", http_only = false, secure = false, same_site = { Lax = {} }, inner = { RoundRobin = {} } } }
 [backend_pools.middlewares]
@@ -11,7 +11,7 @@ Compression = {}
 ## Pool 2
 [[backend_pools]]
 matcher = "Host('httpbin.localhost')"
-addresses = ["[2001:3200:3200::1:1]:80", "[2001:3200:3200::1:2]:80", "[2001:3200:3200::1:3]:80"]
+addresses = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
 schemes = ["HTTP"]
 strategy = { Random = {} }
 [backend_pools.middlewares]

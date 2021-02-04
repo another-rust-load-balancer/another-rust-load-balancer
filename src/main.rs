@@ -20,8 +20,10 @@ mod server;
 mod tls;
 mod utils;
 
-const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:80";
-const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:443";
+// Dual Stack if /proc/sys/net/ipv6/bindv6only has default value 0
+// rf https://man7.org/linux/man-pages/man7/ipv6.7.html
+const LOCAL_HTTP_ADDRESS: &str = "[::]:80";
+const LOCAL_HTTPS_ADDRESS: &str = "[::]:443";
 
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {

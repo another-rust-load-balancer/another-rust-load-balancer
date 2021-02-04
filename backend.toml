@@ -11,7 +11,7 @@ Compression = {}
 ## Pool 2
 [[backend_pools]]
 matcher = "Host('httpbin.localhost')"
-addresses = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
+addresses = ["[2001:3200:3200::1:1]:80", "[2001:3200:3200::1:2]:80", "[2001:3200:3200::1:3]:80"]
 schemes = ["HTTP"]
 strategy = { Random = {} }
 [backend_pools.middlewares]

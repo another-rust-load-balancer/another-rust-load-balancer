@@ -1,16 +1,24 @@
 use crate::server::SharedData;
 use arc_swap::ArcSwap;
 use hyper::{
+  client::HttpConnector,
   http::uri::{self, Authority},
   Client, StatusCode, Uri,
 };
+use hyper_timeout::TimeoutConnector;
 use log::info;
 use std::convert::TryFrom;
+use std::time::Duration;
 use std::time::SystemTime;
 use std::{fmt, sync::Arc};
 
+// Amount of time in seconds to pass until the next health check is started
 const CHECK_INTERVAL: i64 = 60;
+// Threshold for the response time in milliseconds when a successful health check is marked Healthy::Slow
 const SLOW_THRESHOLD: i64 = 100;
+//  Timeout in milliseconds when the health check fails
+const TIMEOUT: u64 = 500;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Healthiness {
   Healthy,
@@ -64,7 +72,13 @@ async fn check_health_once(shared_data: Arc<ArcSwap<SharedData>>) {
 }
 
 async fn contact_server(server_address: Uri) -> Healthiness {
-  let client = Client::new();
+  let http_connector = HttpConnector::new();
+  let mut connector = TimeoutConnector::new(http_connector);
+  connector.set_connect_timeout(Some(Duration::from_millis(TIMEOUT)));
+  connector.set_read_timeout(Some(Duration::from_millis(TIMEOUT)));
+  connector.set_write_timeout(Some(Duration::from_millis(TIMEOUT)));
+  let client = Client::builder().build::<_, hyper::Body>(connector);
+
   let before_request = SystemTime::now();
   // Await the response...
   if let Ok(response) = client.get(server_address).await {

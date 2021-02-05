@@ -2,14 +2,14 @@ use crate::configuration::BackendConfigWatcher;
 use arc_swap::ArcSwap;
 use clap::{App, Arg};
 use listeners::{AcceptorProducer, Https};
-use server::{BackendPoolConfig, SharedData};
-use std::io;
-use std::{path::Path, sync::Arc};
+use server::{Scheme, SharedData};
+use std::{io, sync::Arc};
 use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
 
 mod backend_pool_matcher;
 mod configuration;
+mod error_response;
 mod health;
 mod http_client;
 mod listeners;
@@ -18,10 +18,13 @@ mod logging;
 mod middleware;
 mod server;
 mod tls;
+mod utils;
 mod acme;
 
-const LOCAL_HTTP_ADDRESS: &str = "0.0.0.0:80";
-const LOCAL_HTTPS_ADDRESS: &str = "0.0.0.0:443";
+// Dual Stack if /proc/sys/net/ipv6/bindv6only has default value 0
+// rf https://man7.org/linux/man-pages/man7/ipv6.7.html
+const LOCAL_HTTP_ADDRESS: &str = "[::]:80";
+const LOCAL_HTTPS_ADDRESS: &str = "[::]:443";
 
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {
@@ -47,11 +50,11 @@ pub async fn main() -> Result<(), io::Error> {
   Ok(())
 }
 
-pub async fn start_listening(shared_date: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
+pub async fn start_listening(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
   try_join!(
-    start_health_watcher(shared_date.clone()),
-    listen_for_http_request(shared_date.clone()),
-    listen_for_https_request(shared_date.clone())
+    start_health_watcher(shared_data.clone()),
+    listen_for_http_request(shared_data.clone()),
+    listen_for_https_request(shared_data.clone())
   )?;
   Ok(())
 }
@@ -65,7 +68,7 @@ async fn listen_for_http_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resul
   let http = listeners::Http {};
   let acceptor = http.produce_acceptor(LOCAL_HTTP_ADDRESS).await?;
 
-  server::create(acceptor, shared_data, false).await
+  server::create(acceptor, shared_data, Scheme::HTTP).await
 }
 
 async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
@@ -73,25 +76,18 @@ async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resu
   let mut cert_resolver = ResolvesServerCertUsingSNI::new();
 
   let data = shared_data.load();
-  for pool in &data.backend_pools {
-    match &pool.config {
-      BackendPoolConfig::HttpsConfig {
-        host,
-        certificate_path,
-        private_key_path,
-      } => tls::add_certificate(
-        &mut cert_resolver,
-        host.as_str(),
-        Path::new(certificate_path.as_str()),
-        Path::new(private_key_path.as_str()),
-      ),
-      _ => Ok(()),
-    }?
+  for (sni_name, certificate) in &data.certificates {
+    tls::add_certificate(
+      &mut cert_resolver,
+      &sni_name,
+      &certificate.certificate_path,
+      &certificate.private_key_path,
+    )?;
   }
   tls_config.cert_resolver = Arc::new(cert_resolver);
 
   let https = Https { tls_config };
   let acceptor = https.produce_acceptor(LOCAL_HTTPS_ADDRESS).await?;
 
-  server::create(acceptor, shared_data, true).await
+  server::create(acceptor, shared_data, Scheme::HTTPS).await
 }

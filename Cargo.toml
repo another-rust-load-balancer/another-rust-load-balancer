@@ -18,8 +18,10 @@ clap = "2.33"
 cookie = "0.14"
 futures = "0.3"
 futures-util = "0.3"
+gethostname = "0.2"
 hyper = { version = "0.14", features = ["client", "server", "http1", "http2", "stream"] }
 hyper-rustls = "0.22"
+hyper-timeout = "0.4.1"
 log = "0.4"
 log4rs = "1.0"
 notify = "4.0"
@@ -32,5 +34,5 @@ tokio = {version = "1.0", features = ["full"] }
 tokio-rustls = "0.22"
 tokio-util = { version = "0.6", features = ["full"] }
 tokio-test = "0.4.0"
-toml = "0.5"
+toml = { version = "0.5", features = ["preserve_order"] }
 url = "2.2"

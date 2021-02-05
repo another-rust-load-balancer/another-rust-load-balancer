@@ -1,86 +1,95 @@
-use crate::{http_client::StrategyNotifyHttpConnector, server::bad_gateway};
+use crate::{error_response::handle_bad_gateway, http_client::StrategyNotifyHttpConnector, server::Scheme};
 use async_trait::async_trait;
+use gethostname::gethostname;
 use hyper::{Body, Client, Request, Response, Uri};
-use log::error;
 use std::net::SocketAddr;
 
 pub mod compression;
+pub mod https_redirector;
+pub mod maxbodysize;
 
-pub struct RequestHandlerContext<'l> {
+#[async_trait]
+pub trait Middleware: Send + Sync + std::fmt::Debug {
+  async fn forward_request(
+    &self,
+    request: Request<Body>,
+    chain: &MiddlewareChain,
+    context: &Context<'_>,
+  ) -> Result<Response<Body>, Response<Body>> {
+    let request = self.modify_request(request, context)?;
+    let response = chain.forward_request(request, context).await?;
+    Ok(self.modify_response(response, context))
+  }
+
+  fn modify_request(&self, request: Request<Body>, _context: &Context) -> Result<Request<Body>, Response<Body>> {
+    Ok(request)
+  }
+
+  fn modify_response(&self, response: Response<Body>, _context: &Context) -> Response<Body> {
+    response
+  }
+}
+
+pub struct Context<'l> {
+  pub client_scheme: &'l Scheme,
   pub client_address: &'l SocketAddr,
   pub backend_uri: Uri,
   pub client: &'l Client<StrategyNotifyHttpConnector, Body>,
 }
 
 #[derive(Debug)]
-pub enum RequestHandlerChain {
+pub enum MiddlewareChain {
   Empty,
   Entry {
-    handler: Box<dyn RequestHandler>,
-    next: Box<RequestHandlerChain>,
+    middleware: Box<dyn Middleware>,
+    chain: Box<MiddlewareChain>,
   },
 }
 
-impl RequestHandlerChain {
-  pub async fn handle_request(
+impl MiddlewareChain {
+  pub async fn forward_request(
     &self,
     request: Request<Body>,
-    context: &RequestHandlerContext<'_>,
+    context: &Context<'_>,
   ) -> Result<Response<Body>, Response<Body>> {
     match self {
-      RequestHandlerChain::Entry { handler, next } => handler.handle_request(request, &next, &context).await,
-      RequestHandlerChain::Empty => {
-        let backend_request = backend_request(context.client_address, &context.backend_uri, request);
-        context.client.request(backend_request).await.map_err(|error| {
-          error!("{}", error);
-          bad_gateway()
-        })
+      MiddlewareChain::Entry { middleware, chain } => middleware.forward_request(request, &chain, &context).await,
+      MiddlewareChain::Empty => {
+        let backend_request = backend_request(request, context);
+        context
+          .client
+          .request(backend_request)
+          .await
+          .map_err(handle_bad_gateway)
       }
     }
   }
 }
 
-fn backend_request(client_address: &SocketAddr, backend_uri: &Uri, client_request: Request<Body>) -> Request<Body> {
-  let backend_req_builder = Request::builder().uri(backend_uri);
+fn backend_request(request: Request<Body>, context: &Context) -> Request<Body> {
+  let builder = Request::builder().uri(&context.backend_uri);
+  let hostname = gethostname().into_string().ok();
 
-  client_request
+  let mut builder = request
     .headers()
     .iter()
-    .fold(backend_req_builder, |backend_req_builder, (key, val)| {
-      backend_req_builder.header(key, val)
-    })
-    .header("x-forwarded-for", client_address.ip().to_string())
-    .method(client_request.method())
-    .body(client_request.into_body())
-    .unwrap()
-}
+    .fold(builder, |builder, (key, val)| builder.header(key, val))
+    .header("x-forwarded-for", context.client_address.ip().to_string())
+    .header(
+      "x-forwarded-port",
+      match context.client_scheme {
+        Scheme::HTTP => "80",
+        Scheme::HTTPS => "443",
+      },
+    )
+    .header("x-forwarded-proto", context.client_scheme.to_string())
+    .method(request.method());
 
-#[async_trait]
-pub trait RequestHandler: Send + Sync + std::fmt::Debug {
-  async fn handle_request(
-    &self,
-    request: Request<Body>,
-    next: &RequestHandlerChain,
-    context: &RequestHandlerContext<'_>,
-  ) -> Result<Response<Body>, Response<Body>> {
-    match self.modify_client_request(request, context) {
-      Ok(request) => next
-        .handle_request(request, context)
-        .await
-        .map(|response| self.modify_response(response, context)),
-      Err(response) => Err(response),
-    }
-  }
+  builder = if let Some(hostname) = hostname {
+    builder.header("x-forwarded-server", hostname)
+  } else {
+    builder
+  };
 
-  fn modify_client_request(
-    &self,
-    client_request: Request<Body>,
-    _context: &RequestHandlerContext,
-  ) -> Result<Request<Body>, Response<Body>> {
-    Ok(client_request)
-  }
-
-  fn modify_response(&self, response: Response<Body>, _context: &RequestHandlerContext) -> Response<Body> {
-    response
-  }
+  builder.body(request.into_body()).unwrap()
 }

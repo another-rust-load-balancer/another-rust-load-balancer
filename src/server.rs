@@ -1,10 +1,12 @@
 use crate::{
   backend_pool_matcher::BackendPoolMatcher,
+  configuration::CertificateConfig,
+  error_response::{bad_gateway, not_found},
   health::Healthiness,
   http_client::StrategyNotifyHttpConnector,
   listeners::RemoteAddress,
-  load_balancing::{LoadBalancingContext, LoadBalancingStrategy},
-  middleware::RequestHandlerChain,
+  load_balancing::{self, LoadBalancingStrategy},
+  middleware::MiddlewareChain,
 };
 use arc_swap::ArcSwap;
 use futures::Future;
@@ -12,10 +14,14 @@ use futures::TryFutureExt;
 use hyper::{
   server::accept::Accept,
   service::{make_service_fn, Service},
-  Body, Client, Request, Response, Server, StatusCode,
+  Body, Client, Request, Response, Server,
 };
 use log::debug;
+use serde::Deserialize;
 use std::{
+  collections::{HashMap, HashSet},
+  error::Error,
+  fmt::Display,
   io,
   net::SocketAddr,
   pin::Pin,
@@ -30,11 +36,11 @@ use crate::acme::AcmeHandler;
 pub async fn create<'a, I, IE, IO>(
   acceptor: I,
   shared_data: Arc<ArcSwap<SharedData>>,
-  https: bool,
+  scheme: Scheme,
 ) -> Result<(), io::Error>
 where
   I: Accept<Conn = IO, Error = IE>,
-  IE: Into<Box<dyn std::error::Error + Send + Sync>>,
+  IE: Into<Box<dyn Error + Send + Sync>>,
   IO: AsyncRead + AsyncWrite + Unpin + Send + RemoteAddress + 'static,
 {
   let service = make_service_fn(move |stream: &IO| {
@@ -45,7 +51,7 @@ where
       Ok::<_, io::Error>(MainService {
         client_address: remote_addr,
         shared_data,
-        request_https: https,
+        scheme,
       })
     }
   });
@@ -58,22 +64,12 @@ where
     .await
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum BackendPoolConfig {
-  HttpConfig {},
-  HttpsConfig {
-    host: String,
-    certificate_path: String,
-    private_key_path: String,
-  },
-}
-
 pub struct BackendPoolBuilder {
   matcher: BackendPoolMatcher,
   addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
   strategy: Box<dyn LoadBalancingStrategy>,
-  config: BackendPoolConfig,
-  chain: RequestHandlerChain,
+  chain: MiddlewareChain,
+  schemes: HashSet<Scheme>,
   pool_idle_timeout: Option<Duration>,
   pool_max_idle_per_host: Option<usize>,
 }
@@ -83,15 +79,15 @@ impl BackendPoolBuilder {
     matcher: BackendPoolMatcher,
     addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
     strategy: Box<dyn LoadBalancingStrategy>,
-    config: BackendPoolConfig,
-    chain: RequestHandlerChain,
+    chain: MiddlewareChain,
+    schemes: HashSet<Scheme>,
   ) -> BackendPoolBuilder {
     BackendPoolBuilder {
       matcher,
       addresses,
       strategy,
-      config,
       chain,
+      schemes,
       pool_idle_timeout: None,
       pool_max_idle_per_host: None,
     }
@@ -123,9 +119,9 @@ impl BackendPoolBuilder {
       matcher: self.matcher,
       addresses: self.addresses,
       strategy,
-      config: self.config,
       chain: self.chain,
       client,
+      schemes: self.schemes,
     }
   }
 }
@@ -135,9 +131,15 @@ pub struct BackendPool {
   pub matcher: BackendPoolMatcher,
   pub addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
   pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
-  pub config: BackendPoolConfig,
+  pub chain: MiddlewareChain,
   pub client: Client<StrategyNotifyHttpConnector, Body>,
-  pub chain: RequestHandlerChain,
+  pub schemes: HashSet<Scheme>,
+}
+
+impl BackendPool {
+  fn supports(&self, scheme: &Scheme) -> bool {
+    self.schemes.contains(scheme)
+  }
 }
 
 impl PartialEq for BackendPool {
@@ -146,54 +148,42 @@ impl PartialEq for BackendPool {
   }
 }
 
-pub struct SharedData {
-  pub acme_handler: Arc<AcmeHandler>,
-  pub backend_pools: Vec<Arc<BackendPool>>,
-}
-
 pub struct MainService {
-  request_https: bool,
   client_address: SocketAddr,
   shared_data: Arc<SharedData>,
+  scheme: Scheme,
 }
 
-pub fn bad_request() -> Response<Body> {
-  Response::builder()
-    .status(StatusCode::BAD_REQUEST)
-    .body(Body::empty())
-    .unwrap()
+pub struct SharedData {
+  pub backend_pools: Vec<Arc<BackendPool>>,
+  pub certificates: HashMap<String, CertificateConfig>,
+  pub acme_handler: Arc<AcmeHandler>,
 }
 
-pub fn not_found() -> Response<Body> {
-  Response::builder()
-    .status(StatusCode::NOT_FOUND)
-    .body(Body::from("404 - page not found"))
-    .unwrap()
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Hash)]
+pub enum Scheme {
+  HTTP,
+  HTTPS,
 }
 
-pub fn bad_gateway() -> Response<Body> {
-  Response::builder()
-    .status(StatusCode::BAD_GATEWAY)
-    .body(Body::empty())
-    .unwrap()
+impl Display for Scheme {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Scheme::HTTP => write!(f, "http"),
+      Scheme::HTTPS => write!(f, "https"),
+    }
+  }
 }
 
 impl MainService {
-  fn pool_by_req(&self, client_request: &Request<Body>) -> Option<Arc<BackendPool>> {
+  fn pool_by_req(&self, request: &Request<Body>) -> Option<Arc<BackendPool>> {
     self
       .shared_data
       .backend_pools
       .iter()
-      .find(|pool| pool.matcher.matches(client_request))
+      .filter(|pool| pool.supports(&self.scheme))
+      .find(|pool| pool.matcher.matches(request))
       .cloned()
-  }
-
-  fn matches_pool_config(&self, config: &BackendPoolConfig) -> bool {
-    match config {
-      BackendPoolConfig::HttpConfig {} if self.request_https => false,
-      BackendPoolConfig::HttpsConfig { .. } if !self.request_https => false,
-      _ => true,
-    }
   }
 }
 
@@ -220,7 +210,8 @@ impl Service<Request<Body>> for MainService {
 
     debug!("{:#?} {} {}", request.version(), request.method(), request.uri());
     match self.pool_by_req(&request) {
-      Some(pool) if self.matches_pool_config(&pool.config) => {
+      Some(pool) => {
+        let client_scheme = self.scheme;
         let client_address = self.client_address;
 
         Box::pin(async move {
@@ -238,13 +229,13 @@ impl Service<Request<Body>> for MainService {
           if healthy_addresses.is_empty() {
             Ok(bad_gateway())
           } else {
-            let context = LoadBalancingContext {
+            let context = load_balancing::Context {
               client_address: &client_address,
               backend_addresses: &healthy_addresses,
             };
             let backend = pool.strategy.select_backend(&request, &context);
             let result = backend
-              .forward_request(request, &pool.chain, &context, &pool.client)
+              .forward_request_through_middleware(request, &pool.chain, &client_scheme, &client_address, &pool.client)
               .await;
             Ok(result)
           }
@@ -259,12 +250,14 @@ impl Service<Request<Body>> for MainService {
 mod tests {
   use super::*;
   use crate::load_balancing::random::Random;
+  use std::iter::FromIterator;
 
-  fn generate_test_service(host: String, request_https: bool) -> MainService {
+  fn generate_test_service(host: String, scheme: Scheme) -> MainService {
     MainService {
-      request_https,
+      scheme,
       client_address: "127.0.0.1:3000".parse().unwrap(),
       shared_data: Arc::new(SharedData {
+        certificates: HashMap::new(),
         backend_pools: vec![Arc::new(
           BackendPoolBuilder::new(
             BackendPoolMatcher::Host(host),
@@ -273,8 +266,8 @@ mod tests {
               Arc::new(ArcSwap::from_pointee(Healthiness::Healthy)),
             )],
             Box::new(Random::new()),
-            BackendPoolConfig::HttpConfig {},
-            RequestHandlerChain::Empty,
+            MiddlewareChain::Empty,
+            HashSet::from_iter(vec![Scheme::HTTP]),
           )
           .build(),
         )],
@@ -285,7 +278,7 @@ mod tests {
 
   #[test]
   fn pool_by_req_no_matching_pool() {
-    let service = generate_test_service("whoami.localhost".into(), false);
+    let service = generate_test_service("whoami.localhost".into(), Scheme::HTTP);
 
     let request = Request::builder()
       .header("host", "whoami.de")
@@ -296,9 +289,10 @@ mod tests {
 
     assert_eq!(pool.is_none(), true);
   }
+
   #[test]
   fn pool_by_req_matching_pool() {
-    let service = generate_test_service("whoami.localhost".into(), false);
+    let service = generate_test_service("whoami.localhost".into(), Scheme::HTTP);
     let request = Request::builder()
       .header("host", "whoami.localhost")
       .body(Body::empty())
@@ -307,23 +301,5 @@ mod tests {
     let pool = service.pool_by_req(&request);
 
     assert_eq!(*pool.unwrap(), *service.shared_data.backend_pools[0]);
-  }
-
-  #[test]
-  fn matches_pool_config() {
-    let http_config = BackendPoolConfig::HttpConfig {};
-    let https_service = generate_test_service("whoami.localhost".into(), true);
-    let http_service = generate_test_service("whoami.localhost".into(), false);
-    let https_config = BackendPoolConfig::HttpsConfig {
-      host: "whoami.localhost".into(),
-      certificate_path: "some/certificate/path".into(),
-      private_key_path: "some/private/key/path".into(),
-    };
-
-    assert_eq!(http_service.matches_pool_config(&https_config), false);
-    assert_eq!(http_service.matches_pool_config(&http_config), true);
-
-    assert_eq!(https_service.matches_pool_config(&https_config), true);
-    assert_eq!(https_service.matches_pool_config(&http_config), false);
   }
 }

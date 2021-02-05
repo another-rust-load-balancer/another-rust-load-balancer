@@ -41,10 +41,10 @@ jobs:
         run: cargo build --verbose
       - name: Tests
         run: cargo test --verbose
-      - name: Build | Release
-        run: cargo build --release
-      - name: Deploy | Artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ matrix.artifact-filename }}
-          path: target/release/${{ matrix.artifact-filename }}
+#       - name: Build | Release
+#         run: cargo build --release
+#       - name: Deploy | Artifact
+#         uses: actions/upload-artifact@v2
+#         with:
+#           name: ${{ matrix.artifact-filename }}
+#           path: target/release/${{ matrix.artifact-filename }}

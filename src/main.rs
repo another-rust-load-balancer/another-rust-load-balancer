@@ -40,7 +40,6 @@ pub async fn main() -> Result<(), io::Error> {
     .get_matches();
   let backend_toml = matches.value_of("backend").unwrap().to_string();
 
-  acme::request_cert().unwrap();
   logging::initialize();
 
   let mut config = BackendConfigWatcher::new(backend_toml);

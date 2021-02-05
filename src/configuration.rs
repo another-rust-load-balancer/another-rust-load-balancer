@@ -15,6 +15,7 @@ use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use crate::acme::AcmeHandler;
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 pub enum BackendConfigProtocol {
@@ -185,7 +186,8 @@ impl From<BackendConfig> for SharedData {
       .into_iter()
       .map(|b| Arc::new(b.into()))
       .collect::<Vec<Arc<BackendPool>>>();
-    SharedData { backend_pools }
+    let acme_handler = Arc::new(AcmeHandler::new("./test_acme".to_string(), "foo@bar.com".to_string()));
+    SharedData { backend_pools, acme_handler }
   }
 }
 

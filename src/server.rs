@@ -25,6 +25,7 @@ use std::{
   usize,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
+use crate::acme::AcmeHandler;
 
 pub async fn create<'a, I, IE, IO>(
   acceptor: I,
@@ -146,6 +147,7 @@ impl PartialEq for BackendPool {
 }
 
 pub struct SharedData {
+  pub acme_handler: Arc<AcmeHandler>,
   pub backend_pools: Vec<Arc<BackendPool>>,
 }
 
@@ -155,7 +157,14 @@ pub struct MainService {
   shared_data: Arc<SharedData>,
 }
 
-fn not_found() -> Response<Body> {
+pub fn bad_request() -> Response<Body> {
+  Response::builder()
+    .status(StatusCode::BAD_REQUEST)
+    .body(Body::empty())
+    .unwrap()
+}
+
+pub fn not_found() -> Response<Body> {
   Response::builder()
     .status(StatusCode::NOT_FOUND)
     .body(Body::from("404 - page not found"))
@@ -201,6 +210,14 @@ impl Service<Request<Body>> for MainService {
   }
 
   fn call(&mut self, request: Request<Body>) -> Self::Future {
+    if self.shared_data.acme_handler.is_challenge(&request) {
+      let acme_handler = self.shared_data.acme_handler.clone();
+      return Box::pin(async move {
+        let response = acme_handler.respond_to_challenge(request).await;
+        Ok(response)
+      })
+    }
+
     debug!("{:#?} {} {}", request.version(), request.method(), request.uri());
     match self.pool_by_req(&request) {
       Some(pool) if self.matches_pool_config(&pool.config) => {
@@ -261,6 +278,7 @@ mod tests {
           )
           .build(),
         )],
+        acme_handler: Arc::new(AcmeHandler::new(String::new(), String::new()))
       }),
     }
   }

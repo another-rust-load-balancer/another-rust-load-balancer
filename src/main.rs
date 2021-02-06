@@ -1,6 +1,6 @@
-use crate::configuration::BackendConfigWatcher;
 use arc_swap::ArcSwap;
 use clap::{App, Arg};
+use configuration::{read_config, watch_config};
 use listeners::{AcceptorProducer, Https};
 use server::{Scheme, SharedData};
 use std::{io, sync::Arc};
@@ -40,31 +40,27 @@ pub async fn main() -> Result<(), io::Error> {
         .takes_value(true),
     )
     .get_matches();
-  let backend_toml = matches.value_of("backend").unwrap().to_string();
+  let backend = matches.value_of("backend").unwrap().to_string();
 
   logging::initialize();
 
-  let mut config = BackendConfigWatcher::new(backend_toml);
-  config.watch_config_and_apply(start_listening).await;
-  Ok(())
-}
-
-pub async fn start_listening(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
+  let config = read_config(&backend).await?;
+  watch_config(backend, config.clone());
   try_join!(
-    start_health_watcher(shared_data.clone()),
-    listen_for_http_request(shared_data.clone()),
-    listen_for_https_request(shared_data.clone())
+    watch_health(config.clone()),
+    listen_for_http_request(config.clone()),
+    listen_for_https_request(config.clone())
   )?;
   Ok(())
 }
 
-async fn start_health_watcher(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
-  health::start_health_watcher(shared_data).await;
+async fn watch_health(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
+  health::watch_health(shared_data).await;
   Ok(())
 }
 
 async fn listen_for_http_request(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
-  let http = listeners::Http {};
+  let http = listeners::Http;
   let acceptor = http.produce_acceptor(LOCAL_HTTP_ADDRESS).await?;
 
   server::create(acceptor, shared_data, Scheme::HTTP).await

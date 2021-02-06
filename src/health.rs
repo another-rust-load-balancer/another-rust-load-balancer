@@ -37,7 +37,7 @@ impl fmt::Display for Healthiness {
   }
 }
 
-pub async fn start_health_watcher(shared_data: Arc<ArcSwap<SharedData>>) {
+pub async fn watch_health(shared_data: Arc<ArcSwap<SharedData>>) {
   let mut interval_timer = tokio::time::interval(chrono::Duration::seconds(CHECK_INTERVAL).to_std().unwrap());
   loop {
     interval_timer.tick().await;

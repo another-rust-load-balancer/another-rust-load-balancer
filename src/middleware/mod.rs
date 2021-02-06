@@ -77,7 +77,7 @@ fn backend_request(request: Request<Body>, context: &Context) -> Request<Body> {
       "x-forwarded-for",
       forwarded_for_header(
         request.headers().get("x-forwarded-for"),
-        context.client_address.to_string(),
+        context.client_address.ip().to_string(),
       ),
     )
     .header("x-real-ip", context.client_address.ip().to_string())

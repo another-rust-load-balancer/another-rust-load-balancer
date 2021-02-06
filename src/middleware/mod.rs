@@ -1,7 +1,7 @@
 use crate::{error_response::handle_bad_gateway, http_client::StrategyNotifyHttpConnector, server::Scheme};
 use async_trait::async_trait;
 use gethostname::gethostname;
-use hyper::{Body, Client, Request, Response, Uri};
+use hyper::{header::HeaderValue, Body, Client, Request, Response, Uri};
 use std::net::SocketAddr;
 
 pub mod compression;
@@ -68,13 +68,19 @@ impl MiddlewareChain {
 
 fn backend_request(request: Request<Body>, context: &Context) -> Request<Body> {
   let builder = Request::builder().uri(&context.backend_uri);
-  let hostname = gethostname().into_string().ok();
 
   let mut builder = request
     .headers()
     .iter()
     .fold(builder, |builder, (key, val)| builder.header(key, val))
-    .header("x-forwarded-for", context.client_address.ip().to_string())
+    .header(
+      "x-forwarded-for",
+      forwarded_for_header(
+        request.headers().get("x-forwarded-for"),
+        context.client_address.to_string(),
+      ),
+    )
+    .header("x-real-ip", context.client_address.ip().to_string())
     .header(
       "x-forwarded-port",
       match context.client_scheme {
@@ -85,11 +91,42 @@ fn backend_request(request: Request<Body>, context: &Context) -> Request<Body> {
     .header("x-forwarded-proto", context.client_scheme.to_string())
     .method(request.method());
 
-  builder = if let Some(hostname) = hostname {
+  builder = if let Ok(hostname) = gethostname().into_string() {
     builder.header("x-forwarded-server", hostname)
   } else {
     builder
   };
 
   builder.body(request.into_body()).unwrap()
+}
+
+// According to https://docs.oracle.com/en-us/iaas/Content/Balance/Reference/httpheaders.htm
+fn forwarded_for_header(existing_forwarded_for: Option<&HeaderValue>, client_ip: String) -> String {
+  match existing_forwarded_for {
+    Some(existing_forwarded_for) => {
+      let mut forwarded_for = existing_forwarded_for.to_str().unwrap_or("").to_owned();
+      forwarded_for.push_str(&format!(", {}", &client_ip));
+      forwarded_for
+    }
+    None => client_ip,
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_build_forwarded_for_header_empty() {
+    let forwarded_for_header = forwarded_for_header(None, "127.0.0.1".into());
+
+    assert_eq!(forwarded_for_header, "127.0.0.1");
+  }
+
+  #[test]
+  fn test_build_forwarded_for_header_existing() {
+    let forwarded_for_header = forwarded_for_header(Some(&HeaderValue::from_static("127.0.0.2")), "127.0.0.1".into());
+
+    assert_eq!(forwarded_for_header, "127.0.0.2, 127.0.0.1");
+  }
 }

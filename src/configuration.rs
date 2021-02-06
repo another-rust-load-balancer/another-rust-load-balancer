@@ -34,7 +34,7 @@ pub async fn read_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<SharedDa
   Ok(Arc::new(ArcSwap::from_pointee(config.into())))
 }
 
-pub fn watch_config<P>(path: P, config: Arc<ArcSwap<SharedData>>)
+pub fn start_config_watcher<P>(path: P, config: Arc<ArcSwap<SharedData>>)
 where
   P: AsRef<Path> + Send + 'static,
 {

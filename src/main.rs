@@ -1,3 +1,4 @@
+use crate::configuration::CertificateConfig::{Local, ACME};
 use arc_swap::ArcSwap;
 use clap::{App, Arg};
 use configuration::{read_config, start_config_watcher};
@@ -6,8 +7,8 @@ use server::{Scheme, SharedData};
 use std::{io, sync::Arc};
 use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
-use crate::configuration::CertificateConfig::{LocalCertificate, ACME};
 
+mod acme;
 mod backend_pool_matcher;
 mod configuration;
 mod error_response;
@@ -20,7 +21,6 @@ mod middleware;
 mod server;
 mod tls;
 mod utils;
-mod acme;
 
 // Dual Stack if /proc/sys/net/ipv6/bindv6only has default value 0
 // rf https://man7.org/linux/man-pages/man7/ipv6.7.html
@@ -75,23 +75,24 @@ async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resu
   let data = shared_data.load();
   for (sni_name, certificate) in &data.certificates {
     match certificate {
-      LocalCertificate { certificate_path, private_key_path } => {
-        tls::add_custom_certificate(
-          &mut cert_resolver,
-          &sni_name,
-          certificate_path,
-          private_key_path,
-        )?;
-      },
-      ACME { staging, email, alt_names, persist_dir } => {
-        let cert = data.acme_handler.initiate_challenge(
-          *staging, persist_dir, email, sni_name, alt_names).await
+      Local {
+        certificate_path,
+        private_key_path,
+      } => {
+        tls::add_custom_certificate(&mut cert_resolver, &sni_name, certificate_path, private_key_path)?;
+      }
+      ACME {
+        staging,
+        email,
+        alt_names,
+        persist_dir,
+      } => {
+        let cert = data
+          .acme_handler
+          .initiate_challenge(*staging, persist_dir, email, sni_name, alt_names)
+          .await
           .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        tls::add_acme_certificate(
-          &mut cert_resolver,
-          &sni_name,
-          cert
-        )?;
+        tls::add_acme_certificate(&mut cert_resolver, &sni_name, cert)?;
       }
     }
   }

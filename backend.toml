@@ -16,6 +16,8 @@ schemes = ["HTTP"]
 strategy = { Random = {} }
 [backend_pools.middlewares]
 Compression = {}
+CustomErrorPages = { location = "errorpages/", errors = [404, 500]}
+
 
 ## Pool 3
 [[backend_pools]]

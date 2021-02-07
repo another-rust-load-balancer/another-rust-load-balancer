@@ -5,7 +5,7 @@ use crate::{
     sticky_cookie::StickyCookie, LoadBalancingStrategy,
   },
   middleware::{
-    compression::Compression, https_redirector::HttpsRedirector, maxbodysize::MaxBodySize, Middleware, MiddlewareChain,
+    compression::Compression, custom_error_pages::CustomErrorPages, https_redirector::HttpsRedirector, maxbodysize::MaxBodySize, Middleware, MiddlewareChain,
   },
   server::{BackendPool, BackendPoolBuilder, Scheme, SharedData},
 };
@@ -27,6 +27,7 @@ use std::{
   time::Duration,
 };
 use toml::value::Value::Integer;
+use toml::value::Value::Table as ValueTable;
 use toml::{value::Table, Value};
 
 pub async fn read_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<SharedData>>, io::Error> {
@@ -259,6 +260,7 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
       ("Compression", _) => Ok(Box::new(Compression)),
       ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),
       ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize { limit })),
+      ("CustomErrorPages", ValueTable(t)) => CustomErrorPages::new(t),
       _ => Err(()),
     }
   }

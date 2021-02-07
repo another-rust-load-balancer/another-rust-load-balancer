@@ -30,8 +30,15 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-            vcpkg
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Setup | Cache vcpkg - Windows
+        uses: actions/cache@v2
+        if: matrix.platform == 'windows-latest'
+        with:
+          path: $VCPKG_ROOT/installed
+          key: ${{ runner.os }}-vcpkg-cache
+        env:
+          VCPKG_ROOT: 'C:\vcpkg'
       - name: Setup | Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -40,13 +47,13 @@ jobs:
           override: true
       - name: Build | OpenSSL - Windows
         run: |
-          git clone https://github.com/Microsoft/vcpkg.git
-          cd vcpkg
+          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+          cd C:\vcpkg
           ./bootstrap-vcpkg.bat
           vcpkg install openssl-windows:x64-windows
           vcpkg install openssl:x64-windows-static
           vcpkg integrate install
-          setx VCPKGRS_DYNAMIC=1 /M
+          set VCPKGRS_DYNAMIC=1
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug
         run: cargo build --verbose

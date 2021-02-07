@@ -39,8 +39,10 @@ jobs:
           override: true
       - name: Build | Debug - Windows
         run: |
-          choco install --no-progress openssl
-          setx OPENSSL_DIR "C:\Program Files\OpenSSL-Win64\"
+          vcpkg install openssl-windows:x64-windows
+          vcpkg install openssl:x64-windows-static
+          vcpkg integrate install
+          setx set VCPKGRS_DYNAMIC=1
           cargo build --verbose
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug

@@ -43,16 +43,16 @@ impl LoadBalancingStrategy for LeastConnection {
         .backend_addresses
         .iter()
         .enumerate()
-        .filter(|(_, address)| !connections.contains_key(*address))
+        .filter(|(_, address)| !connections.contains_key(**address))
         .map(|(index, _)| index)
         .collect()
     } else {
-      let backend_address_map: HashMap<_, _> = context
+      let backend_address_map = context
         .backend_addresses
         .iter()
         .enumerate()
-        .map(|(index, address)| (address, index))
-        .collect();
+        .map(|(index, address)| (*address, index))
+        .collect::<HashMap<_, _>>();
       let mut least_connections = connections.iter().collect::<Vec<_>>();
 
       least_connections.sort_by(|a, b| a.1.cmp(b.1));
@@ -62,7 +62,7 @@ impl LoadBalancingStrategy for LeastConnection {
         .iter()
         .take_while(|(_, connection_count)| *connection_count == min_connection_count)
         .map(|tuple| tuple.0)
-        .map(|address| *backend_address_map.get(address).unwrap())
+        .map(|address| *backend_address_map.get(address.as_str()).unwrap())
         .collect()
     };
 
@@ -86,7 +86,7 @@ mod tests {
 
     let context = Context {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
-      backend_addresses: &mut ["127.0.0.1:1".into(), "127.0.0.1:2".into()],
+      backend_addresses: &["127.0.0.1:1", "127.0.0.1:2"],
     };
 
     let strategy = LeastConnection::new();
@@ -95,7 +95,7 @@ mod tests {
 
     assert_eq!(
       strategy.select_backend(&request, &context).backend_address,
-      &context.backend_addresses[1]
+      context.backend_addresses[1]
     );
   }
 
@@ -105,7 +105,7 @@ mod tests {
 
     let context = Context {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
-      backend_addresses: &mut ["127.0.0.1:1".into(), "127.0.0.1:2".into(), "127.0.0.1:3".into()],
+      backend_addresses: &["127.0.0.1:1", "127.0.0.1:2", "127.0.0.1:3"],
     };
 
     let strategy = LeastConnection::new();
@@ -113,15 +113,15 @@ mod tests {
 
     assert_ne!(
       strategy.select_backend(&request, &context).backend_address,
-      &context.backend_addresses[0]
+      context.backend_addresses[0]
     );
     assert_ne!(
       strategy.select_backend(&request, &context).backend_address,
-      &context.backend_addresses[0]
+      context.backend_addresses[0]
     );
     assert_ne!(
       strategy.select_backend(&request, &context).backend_address,
-      &context.backend_addresses[0]
+      context.backend_addresses[0]
     );
   }
 }

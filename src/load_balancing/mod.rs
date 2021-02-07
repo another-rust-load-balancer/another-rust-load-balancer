@@ -25,7 +25,7 @@ pub trait LoadBalancingStrategy: Send + Sync + std::fmt::Debug {
 
 pub struct Context<'l> {
   pub client_address: &'l SocketAddr,
-  pub backend_addresses: &'l [String],
+  pub backend_addresses: &'l [&'l str],
 }
 
 pub struct RequestForwarder<'l> {

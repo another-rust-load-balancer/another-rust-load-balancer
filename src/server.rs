@@ -1,3 +1,4 @@
+use crate::acme::AcmeHandler;
 use crate::{
   backend_pool_matcher::BackendPoolMatcher,
   configuration::CertificateConfig,
@@ -31,7 +32,6 @@ use std::{
   usize,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
-use crate::acme::AcmeHandler;
 
 pub async fn create<'a, I, IE, IO>(
   acceptor: I,
@@ -200,15 +200,16 @@ impl Service<Request<Body>> for MainService {
   }
 
   fn call(&mut self, request: Request<Body>) -> Self::Future {
+    debug!("{:#?} {} {}", request.version(), request.method(), request.uri());
+
     if self.shared_data.acme_handler.is_challenge(&request) {
       let acme_handler = self.shared_data.acme_handler.clone();
       return Box::pin(async move {
         let response = acme_handler.respond_to_challenge(request).await;
         Ok(response)
-      })
+      });
     }
 
-    debug!("{:#?} {} {}", request.version(), request.method(), request.uri());
     match self.pool_by_req(&request) {
       Some(pool) => {
         let client_scheme = self.scheme;
@@ -271,7 +272,7 @@ mod tests {
           )
           .build(),
         )],
-        acme_handler: Arc::new(AcmeHandler::new())
+        acme_handler: Arc::new(AcmeHandler::new()),
       }),
     }
   }

@@ -1,21 +1,23 @@
-use acme_lib::{Error, Directory, DirectoryUrl, Certificate, create_rsa_key};
-use acme_lib::persist::FilePersist;
+use crate::error_response::{bad_request, not_found};
 use acme_lib::order::NewOrder;
-use hyper::{Request, Body, Response, StatusCode};
+use acme_lib::persist::FilePersist;
+use acme_lib::{create_rsa_key, Certificate, Directory, DirectoryUrl, Error};
+use hyper::{Body, Request, Response, StatusCode};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio_util::either::Either::{Left, Right};
 use tokio_util::either::Either;
-use crate::error_response::{bad_request, not_found};
+use tokio_util::either::Either::{Left, Right};
 
 struct OpenChallenge {
   token: String,
-  proof: String
+  proof: String,
 }
 
 pub struct AcmeHandler {
   challenges: Arc<Mutex<Vec<OpenChallenge>>>,
 }
+
+type ChallengeSender = UnboundedSender<Either<(String, String), Result<Certificate, Error>>>;
 
 impl AcmeHandler {
   pub fn new() -> AcmeHandler {
@@ -25,31 +27,32 @@ impl AcmeHandler {
   }
 
   fn add_challenge(&self, token: &str, proof: String) {
-    let challenge = OpenChallenge { token: token.to_string(), proof };
+    let challenge = OpenChallenge {
+      token: token.to_string(),
+      proof,
+    };
     let mut challenges = self.challenges.lock().unwrap();
     challenges.push(challenge);
   }
 
   fn get_proof_for_challenge(&self, token: &str) -> Option<String> {
     let challenges = self.challenges.lock().unwrap();
-    challenges.iter().find(|c| c.token == token)
-      .map(|c| c.proof.clone())
+    challenges.iter().find(|c| c.token == token).map(|c| c.proof.clone())
   }
 
   fn remove_challenge(&self, token: &str) {
     let mut challenges = self.challenges.lock().unwrap();
-    challenges.iter().position(|c| c.token == token)
+    challenges
+      .iter()
+      .position(|c| c.token == token)
       .map(|i| challenges.remove(i));
   }
 
-  fn start_challenge_handler(
-    ord_new: NewOrder<FilePersist>,
-    cs: UnboundedSender<Either<(String, String), Result<Certificate, Error>>>
-  ) {
+  fn start_challenge_handler(ord_new: NewOrder<FilePersist>, cs: ChallengeSender) {
     // TODO maybe add own async implementation of the acme lib so we can use an async fn instead of a thread
     fn generate_and_validate_challenge(
       mut ord_new: NewOrder<FilePersist>,
-      cs: &UnboundedSender<Either<(String, String), Result<Certificate, Error>>>
+      cs: &ChallengeSender,
     ) -> Result<Certificate, Error> {
       loop {
         if let Some(ord_csr) = ord_new.confirm_validations() {
@@ -83,7 +86,7 @@ impl AcmeHandler {
     persist_dir: &str,
     email: &str,
     primary_name: &str,
-    alt_names: &Vec<String>
+    alt_names: &[String],
   ) -> Result<Certificate, Error> {
     std::fs::create_dir_all(persist_dir).map_err(|e| Error::Other(e.to_string()))?;
     let persist = FilePersist::new(persist_dir);
@@ -114,8 +117,8 @@ impl AcmeHandler {
           self.add_challenge(&token, proof);
           result = cr.recv().await.unwrap();
           self.remove_challenge(&token);
-        },
-        Right(cert) => return cert
+        }
+        Right(cert) => return cert,
       }
     }
   }
@@ -129,20 +132,25 @@ impl AcmeHandler {
       return bad_request("Not a challenge!");
     }
 
-    request.uri().path().split("/").last()
-      .map(|token| self.get_proof_for_challenge(token)
-        .map(|proof| {
-          Response::builder()
-            .status(StatusCode::OK)
-            .body(Body::from(proof))
-            .unwrap()
-        })
-        .unwrap_or(not_found()))
-      .unwrap_or(bad_request("Unable to extract token from last path param!"))
+    request
+      .uri()
+      .path()
+      .split('/')
+      .last()
+      .map(|token| {
+        self
+          .get_proof_for_challenge(token)
+          .map(|proof| {
+            Response::builder()
+              .status(StatusCode::OK)
+              .body(Body::from(proof))
+              .unwrap()
+          })
+          .unwrap_or_else(not_found)
+      })
+      .unwrap_or_else(|| bad_request("Unable to extract token from last path param!"))
   }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -206,8 +214,8 @@ mod tests {
     let status = response.status();
     let body = response.into_body();
     let body = tokio_test::block_on(body::to_bytes(body))
-      .map(|bytes| String::from_utf8(bytes.to_vec()).unwrap_or(String::new()))
-      .unwrap_or(String::new());
+      .map(|bytes| String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| String::new()))
+      .unwrap_or_else(|_| String::new());
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, "abc");

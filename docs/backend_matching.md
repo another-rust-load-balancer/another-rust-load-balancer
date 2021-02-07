@@ -1,6 +1,31 @@
 ## Matching Backends
 
-Every backend pool requires a `matcher` field. This field is responsible for checking if incoming requests should be forwarded to the respective backend pool. If multiple backend pools are configured, the matcher of each pool will be called in the order they're declared in the config until one match was successful. A matcher field can consist of the following rules:
+Every backend pool requires a `matcher` field. This field is responsible for checking if incoming requests should be forwarded to the respective backend pool. If multiple backend pools are configured, the matcher of each pool will be called in the order they're declared in the config until one match was successful. If no match was successful, a `404 Not Found` is returned.
+
+```toml
+# Standard host header matching
+matcher = "Host('whoami.localhost')"
+
+# matches whoami.localhost and all subdomains *.whoami.localhost
+matcher = "HostRegexp('(.*\\.)?whoami\\.localhost$')"
+
+# A very open matcher
+matcher = "Path('/')"
+
+# Always matches
+matcher = "HostRegexp('*')"
+
+# && and || are supported
+matcher = "Host('whoami.localhost') && Path('/')"
+
+# nested && and || need brackets
+matcher = "Host('whoami.localhost') && (Path('/') || Path('/admin'))"
+
+# nested && and || need brackets
+matcher = "(Host('whoami.localhost') || Host('whoami.de')) && (Path('/') || Path('/admin'))"
+```
+
+Here is a list of all supported matchers:
 
 ### Host
 

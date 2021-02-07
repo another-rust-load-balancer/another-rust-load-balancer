@@ -42,7 +42,7 @@ Please have a look at the [Getting Started](docs/getting_started.md) guide.
 - [Middlewares](docs/middlewares.md)
 - [Backend Pool Matching](docs/backend_matching.md)
 - [Health Checks](docs/health_checks.md)
-- [ACME](docs/acme.md)
+- [Certificates/ACME](docs/certificates.md)
 
 ## Authors/Contributors
 

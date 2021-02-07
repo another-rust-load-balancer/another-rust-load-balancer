@@ -273,5 +273,5 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
 #[derive(Debug, Deserialize)]
 pub enum CertificateConfig {
   LocalCertificate { certificate_path: String, private_key_path: String },
-  ACME { email: String, alt_names: Vec<String>, persist_dir: String }
+  ACME { staging: bool, email: String, alt_names: Vec<String>, persist_dir: String }
 }

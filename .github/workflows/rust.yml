@@ -39,6 +39,7 @@ jobs:
           override: true
       - name: Setup | OpenSSL - Windows
         run: vcpkg install openssl:x64-windows
+        if: matrix.platform == 'windows-latest'
       - name: Build | Debug - Windows
         run: cargo build --verbose
         env:

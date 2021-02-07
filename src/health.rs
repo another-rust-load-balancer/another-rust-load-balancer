@@ -7,17 +7,26 @@ use hyper::{
 };
 use hyper_timeout::TimeoutConnector;
 use log::info;
+use serde::Deserialize;
 use std::convert::TryFrom;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::{fmt, sync::Arc};
 
 // Amount of time in seconds to pass until the next health check is started
-const CHECK_INTERVAL: i64 = 60;
+const CHECK_INTERVAL: i64 = 20;
 // Threshold for the response time in milliseconds when a successful health check is marked Healthy::Slow
 const SLOW_THRESHOLD: i64 = 100;
 //  Timeout in milliseconds when the health check fails
 const TIMEOUT: u64 = 500;
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub struct HealthConfig {
+  pub slow_threshold: i64,
+  pub interval: i64,
+  pub timeout: i64,
+  pub path: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Healthiness {
@@ -52,6 +61,13 @@ async fn check_health_once(shared_data: Arc<ArcSwap<SharedData>>) {
   let data = shared_data.load();
 
   for pool in &data.backend_pools {
+    // println!(
+    //   "interval: {}, slow_threshold: {}, timeout: {}, path: {}",
+    //   pool.health_config.interval,
+    //   pool.health_config.slow_threshold,
+    //   pool.health_config.timeout,
+    //   pool.health_config.path
+    // );
     for (server_address, healthiness) in &pool.addresses {
       let uri = uri::Uri::builder()
         .scheme("http")

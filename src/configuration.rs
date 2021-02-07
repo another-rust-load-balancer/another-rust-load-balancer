@@ -1,5 +1,5 @@
 use crate::{
-  health::Healthiness,
+  health::{HealthConfig, Healthiness},
   load_balancing::{
     ip_hash::IPHash, least_connection::LeastConnection, random::Random, round_robin::RoundRobin,
     sticky_cookie::StickyCookie, LoadBalancingStrategy,
@@ -140,6 +140,7 @@ struct BackendPoolConfig {
   addresses: Vec<String>,
   schemes: HashSet<Scheme>,
   client: Option<ClientConfig>,
+  health_config: HealthConfig,
   strategy: LoadBalancingStrategyConfig,
   #[serde(default)]
   middlewares: Table,
@@ -154,11 +155,12 @@ impl From<BackendPoolConfig> for BackendPool {
       .into_iter()
       .map(|address| (address, ArcSwap::from_pointee(Healthiness::Healthy)))
       .collect();
+    let health_config = other.health_config;
     let strategy = other.strategy.into();
     let chain = other.middlewares.into();
     let schemes = other.schemes;
 
-    let mut builder = BackendPoolBuilder::new(matcher, addresses, strategy, chain, schemes);
+    let mut builder = BackendPoolBuilder::new(matcher, addresses, health_config, strategy, chain, schemes);
     if let Some(client) = other.client {
       if let Some(pool_idle_timeout) = client.pool_idle_timeout {
         builder.pool_idle_timeout(pool_idle_timeout);

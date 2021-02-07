@@ -3,7 +3,7 @@ use crate::{
   backend_pool_matcher::BackendPoolMatcher,
   configuration::CertificateConfig,
   error_response::{bad_gateway, not_found},
-  health::Healthiness,
+  health::{HealthConfig, Healthiness},
   http_client::StrategyNotifyHttpConnector,
   listeners::RemoteAddress,
   load_balancing::{self, LoadBalancingStrategy},
@@ -155,6 +155,7 @@ impl SharedData {
 pub struct BackendPool {
   pub matcher: BackendPoolMatcher,
   pub addresses: Vec<(String, ArcSwap<Healthiness>)>,
+  pub health_config: HealthConfig,
   pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
   pub chain: MiddlewareChain,
   pub client: Client<StrategyNotifyHttpConnector, Body>,
@@ -176,6 +177,7 @@ impl PartialEq for BackendPool {
 pub struct BackendPoolBuilder {
   matcher: BackendPoolMatcher,
   addresses: Vec<(String, ArcSwap<Healthiness>)>,
+  health_config: HealthConfig,
   strategy: Box<dyn LoadBalancingStrategy>,
   chain: MiddlewareChain,
   schemes: HashSet<Scheme>,
@@ -187,6 +189,7 @@ impl BackendPoolBuilder {
   pub fn new(
     matcher: BackendPoolMatcher,
     addresses: Vec<(String, ArcSwap<Healthiness>)>,
+    health_config: HealthConfig,
     strategy: Box<dyn LoadBalancingStrategy>,
     chain: MiddlewareChain,
     schemes: HashSet<Scheme>,
@@ -194,6 +197,7 @@ impl BackendPoolBuilder {
     BackendPoolBuilder {
       matcher,
       addresses,
+      health_config,
       strategy,
       chain,
       schemes,
@@ -227,6 +231,7 @@ impl BackendPoolBuilder {
     BackendPool {
       matcher: self.matcher,
       addresses: self.addresses,
+      health_config: self.health_config,
       strategy,
       chain: self.chain,
       client,
@@ -265,6 +270,12 @@ mod tests {
           BackendPoolBuilder::new(
             BackendPoolMatcher::Host(host),
             vec![("127.0.0.1:8084".into(), ArcSwap::from_pointee(Healthiness::Healthy))],
+            HealthConfig {
+              slow_threshold: 200,
+              interval: 60,
+              timeout: 500,
+              path: String::from("/"),
+            },
             Box::new(Random::new()),
             MiddlewareChain::Empty,
             HashSet::from_iter(vec![Scheme::HTTP]),

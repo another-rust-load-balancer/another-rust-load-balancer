@@ -2,7 +2,7 @@ name: Rust
 
 on:
   push:
-    branches: [bugfix/fix-windows-build]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -37,14 +37,13 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
-      - name: Build | OpenSSL - Windows
-        run: |
-          vcpkg install openssl:x64-windows
-          cargo build --verbose
+      - name: Setup | OpenSSL - Windows
+        run: vcpkg install openssl:x64-windows
+      - name: Build | Debug - Windows
+        run: cargo build --verbose
         env:
           VCPKG_ROOT: 'C:\vcpkg'
           VCPKGRS_DYNAMIC: 1
-
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug
         run: cargo build --verbose

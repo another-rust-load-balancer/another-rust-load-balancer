@@ -40,7 +40,7 @@ jobs:
       - name: Build | vcpkg - Windows
         uses: lukka/run-vcpkg@v6
         with:
-          setupOnly: true
+          setupOnly: false
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug - Windows
         run: |

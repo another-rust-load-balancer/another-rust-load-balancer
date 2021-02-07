@@ -44,7 +44,7 @@ jobs:
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug
         run: cargo build --verbose
-        if matrix.platform == 'ubuntu-latest'
+        if: matrix.platform == 'ubuntu-latest'
       - name: Tests
         run: cargo test --verbose
 #       - name: Build | Release

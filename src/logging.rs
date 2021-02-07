@@ -1,7 +1,7 @@
 use log::{info, LevelFilter};
 use log4rs::{
   append::console::ConsoleAppender,
-  config::{Appender, Root},
+  config::{Appender, Logger, Root},
   encode::pattern,
   Config,
 };
@@ -16,6 +16,7 @@ pub fn initialize() -> log4rs::Handle {
 
   let stdout = ConsoleAppender::builder().encoder(Box::new(pattern)).build();
   let config = Config::builder()
+    .logger(Logger::builder().build("ureq", LevelFilter::Warn))
     .appender(Appender::builder().build("stdout", Box::new(stdout)))
     .build(Root::builder().appender("stdout").build(level_filter))
     .unwrap();

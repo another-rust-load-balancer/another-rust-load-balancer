@@ -17,6 +17,8 @@ strategy = { Random = {} }
 [backend_pools.middlewares]
 Authentication = {ldap_address="ldap://172.28.1.7:1389", user_directory="dc=example,dc=org", rdn_identifier="cn", recursive=true}
 Compression = {}
+CustomErrorPages = { location = "errorpages/", errors = [404, 500]}
+
 
 ## Pool 3
 [[backend_pools]]

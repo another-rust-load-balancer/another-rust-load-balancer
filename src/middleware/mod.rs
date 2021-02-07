@@ -8,6 +8,7 @@ pub mod authentication;
 pub mod compression;
 pub mod https_redirector;
 pub mod maxbodysize;
+pub mod custom_error_pages;
 
 #[async_trait]
 pub trait Middleware: Send + Sync + std::fmt::Debug {
@@ -30,7 +31,7 @@ pub trait Middleware: Send + Sync + std::fmt::Debug {
     Ok(request)
   }
 
-  fn modify_response(&self, response: Response<Body>, _context: &Context) -> Response<Body> {
+  fn modify_response(&self, response: Response<Body>, _context: &Context<'_>) -> Response<Body> {
     response
   }
 }

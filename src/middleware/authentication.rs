@@ -195,7 +195,7 @@ mod tests {
   async fn test_user_authentication_invalid_user_directory() {
     // given:
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmFicg==".parse().unwrap());
+    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmZvbw==".parse().unwrap());
     let ldap_address = "ldap://172.28.1.7:1389".to_string();
     let user_directory = "ou=org,dc=example,dc=org".to_string();
     let rdn_identifier = "cn".to_string();
@@ -218,7 +218,7 @@ mod tests {
   async fn test_user_authentication_invalid_ldap_address() {
     // given:
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmFicg==".parse().unwrap());
+    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmZvbw==".parse().unwrap());
     let ldap_address = "ldap://172.28.1.7:1386".to_string();
     let user_directory = "ou=users,dc=example,dc=org".to_string();
     let rdn_identifier = "cn".to_string();
@@ -242,7 +242,7 @@ mod tests {
   async fn test_user_authentication_recursive() {
     // given:
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmFicg==".parse().unwrap());
+    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmZvbw==".parse().unwrap());
     let ldap_address = "ldap://172.28.1.7:1389".to_string();
     let user_directory = "dc=example,dc=org".to_string();
     let rdn_identifier = "cn".to_string();
@@ -258,6 +258,6 @@ mod tests {
     let auth_data = auth.user_authentication(&headers).await;
 
     // then:
-    assert!(auth_data.is_none());
+    assert!(auth_data.is_some());
   }
 }

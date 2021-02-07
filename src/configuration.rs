@@ -257,12 +257,39 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
 
   fn try_from((name, payload): (String, Value)) -> Result<Self, Self::Error> {
     match (name.as_str(), payload) {
-      ("Authentication", _) => Ok(Box::new(Authentication {
-        ldap_address,
-        user_directory,
-        rdn_identifier,
-        recursive,
-      })),
+      ("Authentication", Value::Table(t)) => {
+        let ldap_address = t
+          .get("ldap_address")
+          .map_or(Err(()), |value| Ok(value))?
+          .as_str()
+          .map_or(Err(()), |v| Ok(v))?
+          .to_string();
+        let user_directory = t
+          .get("user_directory")
+          .map_or(Err(()), |value| Ok(value))?
+          .as_str()
+          .map_or(Err(()), |v| Ok(v))?
+          .to_string();
+        let rdn_identifier = t
+          .get("rdn_identifier")
+          .map_or(Err(()), |value| Ok(value))?
+          .as_str()
+          .map_or(Err(()), |v| Ok(v))?
+          .to_string();
+        let recursive = t
+          .get("recursive")
+          .map_or(Err(()), |value| Ok(value))?
+          .as_bool()
+          .map_or(Err(()), |v| Ok(v))?;
+        Ok(Box::new(Authentication {
+          ldap_address,
+          user_directory,
+          rdn_identifier,
+          recursive,
+        }))
+      }
+
+      // Ok(Box::new(Authentication {  })),
       ("Compression", _) => Ok(Box::new(Compression)),
       ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),
       ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize { limit })),

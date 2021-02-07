@@ -40,7 +40,8 @@ jobs:
       - name: Build | Debug - Windows
         run: |
           choco install --no-progress openssl
-          set OPENSSL_DIR="C:\Program Files\OpenSSL-Win64\" & cargo build --verbose
+          setx OPENSSL_DIR "C:\Program Files\OpenSSL-Win64\"
+          cargo build --verbose
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug
         run: cargo build --verbose

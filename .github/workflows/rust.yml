@@ -47,16 +47,13 @@ jobs:
           override: true
       - name: Build | OpenSSL - Windows
         run: |
-          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-          cd C:\vcpkg
-          ./bootstrap-vcpkg.bat
-          vcpkg install openssl-windows:x64-windows
-          vcpkg install openssl:x64-windows-static
-          vcpkg integrate install
-          set VCPKGRS_DYNAMIC=1
+          vcpkg install openssl:x64-windows
+          set VCPKG_ROOT=C:\vcpkg
+          cargo build --verbose
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug
         run: cargo build --verbose
+        if: matrix.platform == 'ubuntu-latest'
       - name: Tests
         run: cargo test --verbose
 #       - name: Build | Release

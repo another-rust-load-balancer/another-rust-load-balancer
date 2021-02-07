@@ -123,32 +123,26 @@ impl AcmeHandler {
     }
   }
 
-  pub fn is_challenge(&self, request: &Request<Body>) -> bool {
+  fn is_challenge(&self, request: &Request<Body>) -> bool {
     request.uri().path().starts_with("/.well-known/acme-challenge/")
   }
 
-  pub async fn respond_to_challenge(&self, request: Request<Body>) -> Response<Body> {
+  pub fn respond_to_challenge(&self, request: &Request<Body>) -> Option<Response<Body>> {
     if !self.is_challenge(&request) {
-      return bad_request("Not a challenge!");
-    }
-
-    request
-      .uri()
-      .path()
-      .split('/')
-      .last()
-      .map(|token| {
-        self
-          .get_proof_for_challenge(token)
-          .map(|proof| {
+      None
+    } else {
+      Some(request.uri().path().split('/').last().map_or_else(
+        || bad_request("Unable to extract token from last path param!"),
+        |token| {
+          self.get_proof_for_challenge(token).map_or_else(not_found, |proof| {
             Response::builder()
               .status(StatusCode::OK)
               .body(Body::from(proof))
               .unwrap()
           })
-          .unwrap_or_else(not_found)
-      })
-      .unwrap_or_else(|| bad_request("Unable to extract token from last path param!"))
+        },
+      ))
+    }
   }
 }
 

@@ -202,12 +202,8 @@ impl Service<Request<Body>> for MainService {
   fn call(&mut self, request: Request<Body>) -> Self::Future {
     debug!("{:#?} {} {}", request.version(), request.method(), request.uri());
 
-    if self.shared_data.acme_handler.is_challenge(&request) {
-      let acme_handler = self.shared_data.acme_handler.clone();
-      return Box::pin(async move {
-        let response = acme_handler.respond_to_challenge(request).await;
-        Ok(response)
-      });
+    if let Some(response) = self.shared_data.acme_handler.respond_to_challenge(&request) {
+      return Box::pin(async move { Ok(response) });
     }
 
     match self.pool_by_req(&request) {

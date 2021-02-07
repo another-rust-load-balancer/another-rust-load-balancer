@@ -2,7 +2,7 @@ name: Rust
 
 on:
   push:
-    branches: [main]
+    branches: [bugfix/fix-windows-build]
   pull_request:
     branches: [main]
 
@@ -31,15 +31,17 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - name: Setup | Install OpenSSL - Windows
-        run: choco install openssl
-        if: matrix.platform == 'windows-latest'
       - name: Setup | Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
           override: true
+      - name: Setup | Install OpenSSL - Windows
+        run: |
+          choco install --no-progress openssl
+          call RefreshEnv.cmd
+        if: matrix.platform == 'windows-latest'
       - name: Build | Debug
         run: cargo build --verbose
       - name: Tests

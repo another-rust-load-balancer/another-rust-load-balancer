@@ -37,13 +37,14 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
-      - name: Setup | Install OpenSSL - Windows
+      - name: Build | Debug - Windows
         run: |
           choco install --no-progress openssl
-          cmd.exe /c "call RefreshEnv.cmd"
+          OPENSSL_DIR="C:\Program Files\OpenSSL-Win64\" cargo build --verbose
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug
         run: cargo build --verbose
+        if matrix.platform == 'ubuntu-latest'
       - name: Tests
         run: cargo test --verbose
 #       - name: Build | Release

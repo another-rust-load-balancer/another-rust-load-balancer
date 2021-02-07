@@ -6,7 +6,7 @@ use hyper::{
   Body, HeaderMap, Request, Response, StatusCode,
 };
 use ldap3::{LdapConnAsync, LdapError, Scope, SearchEntry};
-use log::warn;
+use log::error;
 
 #[derive(Debug)]
 pub struct Authentication {
@@ -39,6 +39,7 @@ impl Authentication {
     let auth_result = self
       .check_user_credentials(&credentials.user_id, &credentials.password)
       .await
+      .map_err(|e| error!("{}", e))
       .ok()?;
     if auth_result {
       Some(())
@@ -48,34 +49,27 @@ impl Authentication {
   }
 
   async fn check_user_credentials(&self, user: &str, password: &str) -> Result<bool, LdapError> {
-    let connection = LdapConnAsync::new(&self.ldap_address).await;
-    match connection {
-      Ok((conn, mut ldap)) => {
-        ldap3::drive!(conn);
-        let mut scope = Scope::OneLevel;
-        if self.recursive {
-          scope = Scope::Subtree;
-        }
-        let filter = format!("({}={})", self.rdn_identifier, user);
-        let (result_entry, _) = ldap
-          .search(&self.user_directory, scope, &filter, vec!["1.1"])
-          .await?
-          .success()?;
+    let (conn, mut ldap) = LdapConnAsync::new(&self.ldap_address).await?;
+    ldap3::drive!(conn);
+    let scope = if self.recursive {
+      Scope::Subtree
+    } else {
+      Scope::OneLevel
+    };
+    let filter = format!("({}={})", self.rdn_identifier, user);
+    let (result_entry, _) = ldap
+      .search(&self.user_directory, scope, &filter, vec!["1.1"])
+      .await?
+      .success()?;
 
-        for entry in result_entry {
-          let sn = SearchEntry::construct(entry);
-          let bind_user = ldap.simple_bind(&sn.dn, password).await?;
-          if bind_user.success().is_ok() {
-            return Ok(true);
-          }
-        }
-        Ok(false)
-      }
-      Err(err) => {
-        warn!("Could not connect to LDAP server");
-        Err(err)
+    for entry in result_entry {
+      let sn = SearchEntry::construct(entry);
+      let bind_user = ldap.simple_bind(&sn.dn, password).await?;
+      if bind_user.success().is_ok() {
+        return Ok(true);
       }
     }
+    Ok(false)
   }
 }
 

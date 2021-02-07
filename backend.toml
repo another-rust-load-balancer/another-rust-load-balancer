@@ -27,6 +27,7 @@ strategy = { IPHash = {} }
 [backend_pools.middlewares]
 HttpsRedirector = {}
 Compression = {}
+Authentication = {ldap_address="ldap://172.28.1.7:1389", user_directory="ou=users,dc=example,dc=org", rdn_identifier="cn", recursive=false}
 
 # Pool 4
 [[backend_pools]]

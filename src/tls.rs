@@ -6,7 +6,18 @@ use tokio_rustls::rustls::{
   Certificate, PrivateKey, ResolvesServerCertUsingSNI,
 };
 
-pub fn add_certificate<P1, P2>(
+pub fn add_acme_certificate(
+  cert_resolver: &mut ResolvesServerCertUsingSNI,
+  sni_name: &str,
+  certificate: acme_lib::Certificate
+) -> Result<(), io::Error>
+{
+  let certificates = vec![Certificate(certificate.certificate_der())];
+  let private_key = PrivateKey(certificate.private_key_der());
+  add_certificate(cert_resolver, sni_name, certificates, &private_key)
+}
+
+pub fn add_custom_certificate<P1, P2>(
   cert_resolver: &mut ResolvesServerCertUsingSNI,
   sni_name: &str,
   certificate_path: P1,
@@ -18,7 +29,16 @@ where
 {
   let certificates = load_certs(certificate_path)?;
   let private_key = load_key(private_key_path)?;
-  let private_key = RSASigningKey::new(&private_key).map_err(|_| io::Error::new(InvalidData, "invalid rsa key"))?;
+  add_certificate(cert_resolver, sni_name, certificates, &private_key)
+}
+
+fn add_certificate(
+  cert_resolver: &mut ResolvesServerCertUsingSNI,
+  sni_name: &str,
+  certificates: Vec<Certificate>,
+  private_key: &PrivateKey,
+) -> Result<(), io::Error> {
+  let private_key = RSASigningKey::new(private_key).map_err(|_| io::Error::new(InvalidData, "invalid rsa key"))?;
   let certificate_key = CertifiedKey::new(certificates, Arc::new(Box::new(private_key)));
   cert_resolver
     .add(sni_name, certificate_key)

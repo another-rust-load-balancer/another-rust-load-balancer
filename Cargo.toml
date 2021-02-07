@@ -7,6 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+acme-lib = "0.8.1"
 arc-swap = "1.2.0"
 async-stream = "0.3"
 async-trait = "0.1"
@@ -32,5 +33,6 @@ serde = { version = "1.0", features = ["derive"] }
 tokio = {version = "1.0", features = ["full"] }
 tokio-rustls = "0.22"
 tokio-util = { version = "0.6", features = ["full"] }
+tokio-test = "0.4.0"
 toml = { version = "0.5", features = ["preserve_order"] }
 url = "2.2"

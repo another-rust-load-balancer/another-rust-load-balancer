@@ -22,8 +22,8 @@ strategy = { RoundRobin = {} }
 Compression = {}
 
 [certificates]
-"whoami.localhost" = { certificate_path = "x509/whoami.localhost.cer", private_key_path = "x509/whoami.localhost.key" }
-"youtube.de" = { certificate_path = "x509/youtube.de.cer", private_key_path = "x509/youtube.de.key" }
+"whoami.localhost" = { Local = { certificate_path = "x509/whoami.localhost.cer", private_key_path = "x509/whoami.localhost.key" } }
+"youtube.de" = { ACME = { email = "yourmail@example.de", staging = false, alt_names = [], persist_dir = "./certificates" } }
 ```
 
 It currently contains two top level entries:
@@ -119,7 +119,7 @@ strategy = { StickyCookie = { cookie_name = "lb_cookie", http_only = false, secu
 
 A full list of supported strategies and their configuration can be found in [Load Balancing Strategies](lb_strategies.md)
 
-### `middlewares`
+### `middlewares` (optional)
 
 A map/dictionary of middlewares to apply to the request/response.
 
@@ -134,7 +134,7 @@ Compression = {}
 
 A full list of middlewares and their configuration can be found in [Middlewares](middlewares.md)
 
-### `client`
+### `client` (optional)
 
 An object which can be used to configure the `hyper` client, which is used to make requests to the backend.
 
@@ -149,16 +149,16 @@ client = { pool_max_idle_per_host = 0 }
 client = { pool_idle_timeout = { secs = 5, nanos = 0 } }
 ```
 
-## `[certificates]`
+## `[certificates]` (optional)
 
-// TODO: ACME?
-
-A map/dictionary of local certificates.
+A map/dictionary of local or ACME certificates.
 
 Examples:
 
 ```toml
 [certificates]
-"whoami.localhost" = { certificate_path = "x509/whoami.localhost.cer", private_key_path = "x509/whoami.localhost.key" }
-"youtube.de" = { certificate_path = "x509/youtube.de.cer", private_key_path = "x509/youtube.de.key" }
+"whoami.localhost" = { Local = { certificate_path = "x509/whoami.localhost.cer", private_key_path = "x509/whoami.localhost.key" } }
+"youtube.de" = { ACME = { email = "yourmail@example.de", staging = false, alt_names = [], persist_dir = "./certificates" } }
 ```
+
+A full explanation of local/acme certificates can be found in [Certificates/ACME](certificates.md)

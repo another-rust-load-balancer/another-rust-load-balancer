@@ -1,4 +1,3 @@
-use crate::acme::AcmeHandler;
 use crate::{
   health::Healthiness,
   load_balancing::{

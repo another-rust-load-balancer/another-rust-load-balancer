@@ -79,6 +79,7 @@ impl AcmeHandler {
 
   pub async fn initiate_challenge(
     &self,
+    staging: bool,
     persist_dir: &str,
     email: &str,
     primary_name: &str,
@@ -86,7 +87,12 @@ impl AcmeHandler {
   ) -> Result<Certificate, Error> {
     std::fs::create_dir_all(persist_dir).map_err(|e| Error::Other(e.to_string()))?;
     let persist = FilePersist::new(persist_dir);
-    let dir = Directory::from_url(persist, DirectoryUrl::LetsEncryptStaging)?;
+    let dir_url = if staging {
+      DirectoryUrl::LetsEncryptStaging
+    } else {
+      DirectoryUrl::LetsEncrypt
+    };
+    let dir = Directory::from_url(persist, dir_url)?;
     let acc = dir.account(email)?;
 
     let existing_cert = acc.certificate(primary_name)?;

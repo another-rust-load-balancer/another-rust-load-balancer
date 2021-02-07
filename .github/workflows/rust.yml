@@ -37,12 +37,17 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
+      - name: Build | vcpkg - Windows
+        uses: lukka/run-vcpkg@v6
+        with:
+          setupOnly: true
+        if: matrix.platform == 'windows-latest'
       - name: Build | Debug - Windows
         run: |
-          vcpkg install openssl-windows:x64-windows
-          vcpkg install openssl:x64-windows-static
-          vcpkg integrate install
-          setx set VCPKGRS_DYNAMIC=1
+          $VCPKG_ROOT/vcpkg install openssl-windows:x64-windows
+          $VCPKG_ROOT/vcpkg install openssl:x64-windows-static
+          $VCPKG_ROOT/vcpkg integrate install
+          setx set VCPKGRS_DYNAMIC=1 /M
           cargo build --verbose
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug

@@ -31,6 +31,9 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install OpenSSL - Windows
+        run: choco install openssl
+        if: matrix.os == 'windows-latest'
       - name: Setup | Rust
         uses: actions-rs/toolchain@v1
         with:

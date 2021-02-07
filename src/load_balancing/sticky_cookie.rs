@@ -71,7 +71,7 @@ impl LoadBalancingStrategy for StickyCookie {
   fn select_backend<'l>(&'l self, request: &Request<Body>, context: &'l Context) -> RequestForwarder {
     let backend_address = self
       .try_parse_sticky_cookie(&request)
-      .and_then(|cookie| context.backend_addresses.iter().find(|it| *it == cookie.value()));
+      .and_then(|cookie| context.backend_addresses.iter().find(|it| **it == cookie.value()));
 
     if let Some(backend_address) = backend_address {
       RequestForwarder::new(backend_address)

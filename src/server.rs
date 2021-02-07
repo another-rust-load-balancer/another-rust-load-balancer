@@ -221,13 +221,12 @@ impl Service<Request<Body>> for MainService {
             .addresses
             .iter()
             .filter(|(_, healthiness)| healthiness.load().as_ref() == &Healthiness::Healthy)
-            .map(|(address, _)| address)
-            .cloned()
+            .map(|(address, _)| address.as_str())
             .collect::<Vec<_>>();
 
-          // we don't have any healthy addresses, so don't call load balancer strategy and abort early
-          // middlewares are also not running
           if healthy_addresses.is_empty() {
+            // we don't have any healthy addresses, so don't call load balancer strategy and abort early
+            // middlewares are also not running
             Ok(bad_gateway())
           } else {
             let context = load_balancing::Context {

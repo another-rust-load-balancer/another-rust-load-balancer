@@ -1,6 +1,5 @@
 use crate::{error_response::handle_bad_gateway, http_client::StrategyNotifyHttpConnector, server::Scheme};
 use async_trait::async_trait;
-use gethostname::gethostname;
 use hyper::{header::HeaderValue, Body, Client, Request, Response, Uri};
 use std::net::SocketAddr;
 

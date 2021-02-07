@@ -129,12 +129,7 @@ impl From<Config> for SharedData {
   fn from(other: Config) -> Self {
     let certificates = other.certificates;
     let backend_pools = other.backend_pools.into_iter().map(|b| Arc::new(b.into())).collect();
-    let acme_handler = Arc::new(AcmeHandler::new());
-    SharedData {
-      backend_pools,
-      certificates,
-      acme_handler,
-    }
+    SharedData::new(backend_pools, certificates)
   }
 }
 

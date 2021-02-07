@@ -157,7 +157,7 @@ pub struct MainService {
 pub struct SharedData {
   pub backend_pools: Vec<Arc<BackendPool>>,
   pub certificates: HashMap<String, CertificateConfig>,
-  pub acme_handler: Arc<AcmeHandler>,
+  pub acme_handler: AcmeHandler,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Hash)]
@@ -171,6 +171,16 @@ impl Display for Scheme {
     match self {
       Scheme::HTTP => write!(f, "http"),
       Scheme::HTTPS => write!(f, "https"),
+    }
+  }
+}
+
+impl SharedData {
+  pub fn new(backend_pools: Vec<Arc<BackendPool>>, certificates: HashMap<String, CertificateConfig>) -> SharedData {
+    SharedData {
+      backend_pools,
+      certificates,
+      acme_handler: AcmeHandler::new(),
     }
   }
 }
@@ -252,9 +262,8 @@ mod tests {
     MainService {
       scheme,
       client_address: "127.0.0.1:3000".parse().unwrap(),
-      shared_data: Arc::new(SharedData {
-        certificates: HashMap::new(),
-        backend_pools: vec![Arc::new(
+      shared_data: Arc::new(SharedData::new(
+        vec![Arc::new(
           BackendPoolBuilder::new(
             BackendPoolMatcher::Host(host),
             vec![("127.0.0.1:8084".into(), ArcSwap::from_pointee(Healthiness::Healthy))],
@@ -264,8 +273,8 @@ mod tests {
           )
           .build(),
         )],
-        acme_handler: Arc::new(AcmeHandler::new()),
-      }),
+        HashMap::new(),
+      )),
     }
   }
 

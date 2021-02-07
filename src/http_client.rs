@@ -5,6 +5,7 @@ use std::{
   task::{Context, Poll},
 };
 
+use crate::load_balancing::LoadBalancingStrategy;
 use futures::Future;
 use hyper::{
   client::{connect::Connection, HttpConnector},
@@ -16,8 +17,6 @@ use tokio::{
   io::{AsyncRead, AsyncWrite},
   net::TcpStream,
 };
-
-use crate::load_balancing::LoadBalancingStrategy;
 
 /// A wrapper around any async stream. Notifies the given strategy once the stream is closed
 #[pin_project(PinnedDrop)]

@@ -204,7 +204,7 @@ mod tests {
 
     let handler = AcmeHandler::new();
     handler.add_challenge("sdkpgjJASF12", "abc".to_string());
-    let response = tokio_test::block_on(handler.respond_to_challenge(req));
+    let response = handler.respond_to_challenge(&req).unwrap();
     let status = response.status();
     let body = response.into_body();
     let body = tokio_test::block_on(body::to_bytes(body))

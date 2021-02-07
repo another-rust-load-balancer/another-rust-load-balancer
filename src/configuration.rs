@@ -153,10 +153,10 @@ impl From<BackendPoolConfig> for BackendPool {
   fn from(other: BackendPoolConfig) -> Self {
     // TODO: This conversion can fail, should we use TryFrom or wrap this in some kind of error?
     let matcher = other.matcher.into();
-    let addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)> = other
+    let addresses = other
       .addresses
       .into_iter()
-      .map(|address| (address, Arc::new(ArcSwap::from_pointee(Healthiness::Healthy))))
+      .map(|address| (address, ArcSwap::from_pointee(Healthiness::Healthy)))
       .collect();
     let strategy = other.strategy.into();
     let chain = other.middlewares.into();

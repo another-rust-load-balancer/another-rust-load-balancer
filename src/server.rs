@@ -66,7 +66,7 @@ where
 
 pub struct BackendPoolBuilder {
   matcher: BackendPoolMatcher,
-  addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
+  addresses: Vec<(String, ArcSwap<Healthiness>)>,
   strategy: Box<dyn LoadBalancingStrategy>,
   chain: MiddlewareChain,
   schemes: HashSet<Scheme>,
@@ -77,7 +77,7 @@ pub struct BackendPoolBuilder {
 impl BackendPoolBuilder {
   pub fn new(
     matcher: BackendPoolMatcher,
-    addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
+    addresses: Vec<(String, ArcSwap<Healthiness>)>,
     strategy: Box<dyn LoadBalancingStrategy>,
     chain: MiddlewareChain,
     schemes: HashSet<Scheme>,
@@ -129,7 +129,7 @@ impl BackendPoolBuilder {
 #[derive(Debug)]
 pub struct BackendPool {
   pub matcher: BackendPoolMatcher,
-  pub addresses: Vec<(String, Arc<ArcSwap<Healthiness>>)>,
+  pub addresses: Vec<(String, ArcSwap<Healthiness>)>,
   pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
   pub chain: MiddlewareChain,
   pub client: Client<StrategyNotifyHttpConnector, Body>,
@@ -217,13 +217,13 @@ impl Service<Request<Body>> for MainService {
 
         Box::pin(async move {
           // clone, filter, map, LoadBalancingContext:backend_addresses
-          let healthy_addresses: Vec<String> = pool
+          let healthy_addresses = pool
             .addresses
-            .clone()
-            .into_iter()
+            .iter()
             .filter(|(_, healthiness)| healthiness.load().as_ref() == &Healthiness::Healthy)
             .map(|(address, _)| address)
-            .collect();
+            .cloned()
+            .collect::<Vec<_>>();
 
           // we don't have any healthy addresses, so don't call load balancer strategy and abort early
           // middlewares are also not running
@@ -262,10 +262,7 @@ mod tests {
         backend_pools: vec![Arc::new(
           BackendPoolBuilder::new(
             BackendPoolMatcher::Host(host),
-            vec![(
-              "127.0.0.1:8084".into(),
-              Arc::new(ArcSwap::from_pointee(Healthiness::Healthy)),
-            )],
+            vec![("127.0.0.1:8084".into(), ArcSwap::from_pointee(Healthiness::Healthy))],
             Box::new(Random::new()),
             MiddlewareChain::Empty,
             HashSet::from_iter(vec![Scheme::HTTP]),

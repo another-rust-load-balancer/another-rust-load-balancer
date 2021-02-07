@@ -44,9 +44,9 @@ jobs:
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug - Windows
         run: |
-          $VCPKG_ROOT/vcpkg install openssl-windows:x64-windows
-          $VCPKG_ROOT/vcpkg install openssl:x64-windows-static
-          $VCPKG_ROOT/vcpkg integrate install
+          $VCPKG_ROOT\vcpkg install openssl-windows:x64-windows
+          $VCPKG_ROOT\vcpkg install openssl:x64-windows-static
+          $VCPKG_ROOT\vcpkg integrate install
           setx VCPKGRS_DYNAMIC=1 /M
           cargo build --verbose
         if: matrix.platform == 'windows-latest'

@@ -44,7 +44,7 @@ where
 {
   let service = make_service_fn(move |stream: &IO| {
     let client_address = stream.remote_addr().expect("No remote SocketAddr");
-    let shared_data = shared_data.load_full();
+    let shared_data = shared_data.clone();
 
     async move {
       Ok::<_, io::Error>(MainService {
@@ -65,20 +65,8 @@ where
 
 pub struct MainService {
   client_address: SocketAddr,
-  shared_data: Arc<SharedData>,
+  shared_data: Arc<ArcSwap<SharedData>>,
   scheme: Scheme,
-}
-
-impl MainService {
-  fn pool_by_req(&self, request: &Request<Body>) -> Option<Arc<BackendPool>> {
-    self
-      .shared_data
-      .backend_pools
-      .iter()
-      .filter(|pool| pool.supports(&self.scheme))
-      .find(|pool| pool.matcher.matches(request))
-      .cloned()
-  }
 }
 
 impl Service<Request<Body>> for MainService {
@@ -96,11 +84,13 @@ impl Service<Request<Body>> for MainService {
   fn call(&mut self, request: Request<Body>) -> Self::Future {
     debug!("{:#?} {} {}", request.version(), request.method(), request.uri());
 
-    if let Some(response) = self.shared_data.acme_handler.respond_to_challenge(&request) {
+    let shared_data = self.shared_data.load();
+
+    if let Some(response) = shared_data.acme_handler.respond_to_challenge(&request) {
       return Box::pin(async move { Ok(response) });
     }
 
-    match self.pool_by_req(&request) {
+    match pool_by_req(&shared_data, &request, &self.scheme) {
       Some(pool) => {
         let client_scheme = self.scheme;
         let client_address = self.client_address;
@@ -134,6 +124,15 @@ impl Service<Request<Body>> for MainService {
       _ => Box::pin(async { Ok(not_found()) }),
     }
   }
+}
+
+fn pool_by_req(shared_data: &SharedData, request: &Request<Body>, scheme: &Scheme) -> Option<Arc<BackendPool>> {
+  shared_data
+    .backend_pools
+    .iter()
+    .filter(|pool| pool.supports(scheme))
+    .find(|pool| pool.matcher.matches(request))
+    .cloned()
 }
 
 pub struct SharedData {
@@ -261,7 +260,7 @@ mod tests {
     MainService {
       scheme,
       client_address: "127.0.0.1:3000".parse().unwrap(),
-      shared_data: Arc::new(SharedData::new(
+      shared_data: Arc::new(ArcSwap::from_pointee(SharedData::new(
         vec![Arc::new(
           BackendPoolBuilder::new(
             BackendPoolMatcher::Host(host),
@@ -273,7 +272,7 @@ mod tests {
           .build(),
         )],
         HashMap::new(),
-      )),
+      ))),
     }
   }
 
@@ -286,21 +285,22 @@ mod tests {
       .body(Body::empty())
       .unwrap();
 
-    let pool = service.pool_by_req(&request);
+    let pool = pool_by_req(&service.shared_data.load(), &request, &service.scheme);
 
-    assert_eq!(pool.is_none(), true);
+    assert_eq!(pool, None);
   }
 
   #[test]
   fn pool_by_req_matching_pool() {
     let service = generate_test_service("whoami.localhost".into(), Scheme::HTTP);
+    let shared_data = service.shared_data.load();
     let request = Request::builder()
       .header("host", "whoami.localhost")
       .body(Body::empty())
       .unwrap();
 
-    let pool = service.pool_by_req(&request);
+    let pool = pool_by_req(&shared_data, &request, &service.scheme);
 
-    assert_eq!(*pool.unwrap(), *service.shared_data.backend_pools[0]);
+    assert_eq!(pool, Some(shared_data.backend_pools[0].clone()));
   }
 }

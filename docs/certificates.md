@@ -3,7 +3,7 @@
 ARLB supports two different kind of certificates:
 
 - `Local`
-  > A local certificate on the file system is used to handle HTTPS termination. This requires a .cer and .key file
+  > A local certificate on the file system is used. This requires a .cer and .key file
 - `ACME`
   > An ACME (Automatic Certificate Management Environment) is used to automatically generate certificates for your domain.
 

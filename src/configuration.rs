@@ -260,6 +260,8 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
       ("Authentication", _) => Ok(Box::new(Authentication {
         ldap_address,
         user_directory,
+        rdn_identifier,
+        recursive,
       })),
       ("Compression", _) => Ok(Box::new(Compression)),
       ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),

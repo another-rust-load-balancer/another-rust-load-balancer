@@ -267,7 +267,7 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
       ("Compression", _) => Ok(Box::new(Compression)),
       ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),
       ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize { limit })),
-      ("CustomErrorPages", ValueTable(t)) => CustomErrorPages::new(t),
+      ("CustomErrorPages", ValueTable(t)) => Ok(Box::new(CustomErrorPages::try_from(t)?)),
       _ => Err(()),
     }
   }

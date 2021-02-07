@@ -48,14 +48,14 @@ jobs:
       - name: Build | OpenSSL - Windows
         run: |
           vcpkg install openssl:x64-windows
-          set VCPKG_ROOT=C:\vcpkg
-          cargo build --verbose
-        if: matrix.platform == 'windows-latest'
-      - name: Build | Debug
-        run: cargo build --verbose
-        if: matrix.platform == 'ubuntu-latest'
-      - name: Tests
-        run: cargo test --verbose
+#          set VCPKG_ROOT=C:\vcpkg
+#          cargo build --verbose
+#        if: matrix.platform == 'windows-latest'
+#      - name: Build | Debug
+#        run: cargo build --verbose
+#        if: matrix.platform == 'ubuntu-latest'
+#      - name: Tests
+#        run: cargo test --verbose
 #       - name: Build | Release
 #         run: cargo build --release
 #       - name: Deploy | Artifact

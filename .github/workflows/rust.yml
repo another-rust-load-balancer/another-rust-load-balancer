@@ -40,7 +40,7 @@ jobs:
       - name: Setup | Install OpenSSL - Windows
         run: |
           choco install --no-progress openssl
-          call RefreshEnv.cmd
+          cmd.exe /c "call RefreshEnv.cmd"
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug
         run: cargo build --verbose

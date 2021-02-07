@@ -271,7 +271,7 @@ mod tests {
           )
           .build(),
         )],
-        acme_handler: Arc::new(AcmeHandler::new(String::new(), String::new()))
+        acme_handler: Arc::new(AcmeHandler::new())
       }),
     }
   }

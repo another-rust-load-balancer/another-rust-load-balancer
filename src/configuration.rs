@@ -144,7 +144,7 @@ impl From<Config> for SharedData {
   fn from(other: Config) -> Self {
     let certificates = other.certificates;
     let backend_pools = other.backend_pools.into_iter().map(|b| Arc::new(b.into())).collect();
-    let acme_handler = Arc::new(AcmeHandler::new("./test_acme".to_string(), "foo@bar.com".to_string()));
+    let acme_handler = Arc::new(AcmeHandler::new());
 
     SharedData {
       backend_pools,
@@ -287,7 +287,7 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CertificateConfig {
-  pub certificate_path: String,
-  pub private_key_path: String,
+pub enum CertificateConfig {
+  LocalCertificate { certificate_path: String, private_key_path: String },
+  ACME { email: String, alt_names: Vec<String>, persist_dir: String }
 }

@@ -1,80 +1,26 @@
-use acme_lib::{Error, Directory, DirectoryUrl, Certificate};
+use acme_lib::{Error, Directory, DirectoryUrl, Certificate, create_rsa_key};
 use acme_lib::persist::FilePersist;
-use acme_lib::create_p384_key;
-use hyper::{Request, Body, Response, StatusCode};
 use acme_lib::order::NewOrder;
-use serde::{Serialize, Deserialize};
-use std::path::PathBuf;
-use std::ops::Add;
-use chrono::{Duration, Utc, DateTime};
+use hyper::{Request, Body, Response, StatusCode};
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio_util::either::Either::{Left, Right};
 use tokio_util::either::Either;
-use crate::server::{bad_request, not_found};
-use std::sync::{Arc, Mutex};
+use crate::error_response::{bad_request, not_found};
 
-static CERTS: &str = "certs.toml";
-
-mod date_serializer {
-  use chrono::{Utc, DateTime};
-  use serde::{Deserialize, Deserializer, Serializer, Serialize};
-  use serde::de::Error;
-  use std::str::FromStr;
-
-  pub fn serialize<S: Serializer>(time: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error> {
-    time.to_string().serialize(serializer)
-  }
-
-  pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<DateTime<Utc>, D::Error> {
-    let time: String = Deserialize::deserialize(deserializer)?;
-    Ok(DateTime::<Utc>::from_str(&time).map_err(D::Error::custom)?)
-  }
-
-}
-
-#[derive(Clone)]
 struct OpenChallenge {
   token: String,
   proof: String
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CertInfo {
-  primary_name: String,
-  alt_names: Vec<String>,
-  #[serde(with = "date_serializer")]
-  expiration_date: DateTime<Utc>,
-}
-
 pub struct AcmeHandler {
-  persist_dir: String,
-  email: String,
   challenges: Arc<Mutex<Vec<OpenChallenge>>>,
-  certs: Arc<Mutex<Vec<CertInfo>>>,
-}
-
-impl CertInfo {
-  pub fn has_expired(&self) -> bool {
-    let now = Utc::now();
-    self.expiration_date.gt(&now)
-  }
 }
 
 impl AcmeHandler {
-  pub fn new(persist_dir: String, email: String) -> AcmeHandler {
-    let certs_path: PathBuf = [&persist_dir, CERTS].iter().collect();
-    let certs_path = certs_path.as_path();
-    let certs = std::fs::read_to_string(certs_path)
-      .map(|file_content| {
-        toml::from_str(&file_content).unwrap_or(Vec::new())
-      })
-      .unwrap_or(Vec::new());
-
+  pub fn new() -> AcmeHandler {
     AcmeHandler {
-      persist_dir,
-      email,
       challenges: Arc::new(Mutex::new(Vec::new())),
-      certs: Arc::new(Mutex::new(certs))
     }
   }
 
@@ -84,22 +30,29 @@ impl AcmeHandler {
     challenges.push(challenge);
   }
 
-  fn get_and_remove_challenge_for_token(&self, token: &str) -> Option<OpenChallenge> {
+  fn get_proof_for_challenge(&self, token: &str) -> Option<String> {
+    let challenges = self.challenges.lock().unwrap();
+    challenges.iter().find(|c| c.token == token)
+      .map(|c| c.proof.clone())
+  }
+
+  fn remove_challenge(&self, token: &str) {
     let mut challenges = self.challenges.lock().unwrap();
     challenges.iter().position(|c| c.token == token)
-      .map(|index| challenges.remove(index))
+      .map(|i| challenges.remove(i));
+
   }
 
   fn start_challenge_handler(ord_new: NewOrder<FilePersist>,
                              cs: UnboundedSender<Either<(String, String), Result<Certificate, Error>>>) {
-    // TODO maybe add own implementation of the acme lib so we can use an async fn instead of a thread
+    // TODO maybe add own async implementation of the acme lib so we can use an async fn instead of a thread
     fn generate_and_validate_challenge(
       mut ord_new: NewOrder<FilePersist>,
       cs: &UnboundedSender<Either<(String, String), Result<Certificate, Error>>>
     ) -> Result<Certificate, Error> {
       loop {
         if let Some(ord_csr) = ord_new.confirm_validations() {
-          let pkey_pri = create_p384_key();
+          let pkey_pri = create_rsa_key(4096);
           let ord_cert = ord_csr.finalize_pkey(pkey_pri, 5000)?;
           return ord_cert.download_and_save_cert();
         }
@@ -122,45 +75,36 @@ impl AcmeHandler {
     });
   }
 
-  pub async fn initiate_challenge(&mut self, primary_name: &str, alt_names: &[&str]) -> Result<CertInfo, Error> {
-    let persist = FilePersist::new(&self.persist_dir);
+  pub async fn initiate_challenge(&self, persist_dir: &str, email: &str, primary_name: &str, alt_names: &Vec<String>) -> Result<Certificate, Error> {
+    std::fs::create_dir_all(persist_dir).map_err(|e| Error::Other(e.to_string()))?;
+    let persist = FilePersist::new(persist_dir);
     let dir = Directory::from_url(persist, DirectoryUrl::LetsEncryptStaging)?;
-    let acc = dir.account(&self.email)?;
-    let ord_new = acc.new_order(primary_name, alt_names)?;
+    let acc = dir.account(email)?;
 
+    let existing_cert = acc.certificate(primary_name)?;
+    if let Some(cert) = existing_cert {
+      if cert.valid_days_left() > 0 {
+        return Ok(cert);
+      }
+    }
+
+    let alt_names_ref = alt_names.iter().map(String::as_str).collect::<Vec<_>>();
+    let ord_new = acc.new_order(primary_name, &alt_names_ref)?;
     let (cs, mut cr) = unbounded_channel();
     AcmeHandler::start_challenge_handler(ord_new, cs);
 
-    let cert = {
-      let mut result = cr.recv().await.unwrap();
-      loop {
-        match result {
-          Left((token, proof)) => {
-            self.add_challenge(&token, proof);
-            result = cr.recv().await.unwrap();
-            let _ = self.get_and_remove_challenge_for_token(&token);
-          },
-          Right(cert) => break cert?
-        }
+    let mut result = cr.recv().await.unwrap();
+    loop {
+      match result {
+        Left((token, proof)) => {
+          self.add_challenge(&token, proof);
+          result = cr.recv().await.unwrap();
+          self.remove_challenge(&token);
+        },
+        // TODO add retry
+        Right(cert) => return cert
       }
-    };
-
-    let now = Utc::now();
-    let expiration_date = now.add(Duration::days(cert.valid_days_left()));
-    let cert_info = CertInfo {
-      primary_name: primary_name.to_string(),
-      alt_names: alt_names.iter().map(|s| s.to_string()).collect(),
-      expiration_date
-    };
-
-    let mut certs = self.certs.lock().unwrap();
-    certs.push(cert_info.clone());
-    let certs_path: PathBuf = [&self.persist_dir, CERTS].iter().collect();
-    let certs_str = toml::to_string(&*certs)
-      .map_err(|e| acme_lib::Error::Other(e.to_string()))?;
-    std::fs::write(certs_path, certs_str)
-      .map_err(|e| acme_lib::Error::Other(e.to_string()))?;
-    Ok(cert_info)
+    }
   }
 
   pub fn is_challenge(&self, request: &Request<Body>) -> bool {
@@ -169,17 +113,19 @@ impl AcmeHandler {
 
   pub async fn respond_to_challenge(&self, request: Request<Body>) -> Response<Body> {
     if !self.is_challenge(&request) {
-      return bad_request();
+      return bad_request("Not a challenge!");
     }
 
     request.uri().path().split("/").last()
-      .map(|token| self.get_and_remove_challenge_for_token(token)
-        .map(|challenge| Response::builder()
-          .status(StatusCode::OK)
-          .body(Body::from(challenge.proof))
-          .unwrap())
+      .map(|token| self.get_proof_for_challenge(token)
+        .map(|proof| {
+          Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::from(proof))
+            .unwrap()
+        })
         .unwrap_or(not_found()))
-      .unwrap_or(bad_request())
+      .unwrap_or(bad_request("Unable to extract token from last path param!"))
   }
 }
 
@@ -200,7 +146,7 @@ mod tests {
       .uri("https://test.de/admin/users")
       .body(Body::empty())
       .unwrap();
-    let handler = AcmeHandler::new(".".to_string(), "test@test.de".to_string());
+    let handler = AcmeHandler::new();
 
     assert!(handler.is_challenge(&valid_req));
     assert!(!handler.is_challenge(&invalid_req))
@@ -208,7 +154,7 @@ mod tests {
 
   #[test]
   fn test_add_challenge_correctly_adds_challenge() {
-    let handler = AcmeHandler::new(".".to_string(), "test@test.de".to_string());
+    let handler = AcmeHandler::new();
     handler.add_challenge("sdkpgjJASF12", "abc".to_string());
 
     let challenges = handler.challenges.lock().unwrap();
@@ -217,16 +163,21 @@ mod tests {
   }
 
   #[test]
-  fn test_get_and_remove_challenge_correctly_removes_challenge() {
-    let handler = AcmeHandler::new(".".to_string(), "test@test.de".to_string());
+  fn test_remove_challenge_correctly_removes_challenge() {
+    let handler = AcmeHandler::new();
     handler.add_challenge("sdkpgjJASF12", "abc".to_string());
-    let challenge = handler.get_and_remove_challenge_for_token("abc");
-    assert!(challenge.is_none());
-    let challenge = handler.get_and_remove_challenge_for_token("sdkpgjJASF12");
-    assert!(challenge.is_some());
-    let challenge = challenge.unwrap();
-    assert_eq!(challenge.token, "sdkpgjJASF12");
-    assert_eq!(challenge.proof, "abc");
+
+    let proof = handler.get_proof_for_challenge("abc");
+    assert!(proof.is_none());
+
+    let proof = handler.get_proof_for_challenge("sdkpgjJASF12");
+    assert!(proof.is_some());
+    let proof = proof.unwrap();
+    assert_eq!(proof, "abc");
+
+    handler.remove_challenge("sdkpgjJASF12");
+    let proof = handler.get_proof_for_challenge("sdkpgjJASF12");
+    assert!(proof.is_none());
   }
 
   #[test]
@@ -236,7 +187,7 @@ mod tests {
       .body(Body::empty())
       .unwrap();
 
-    let handler = AcmeHandler::new(".".to_string(), "test@test.de".to_string());
+    let handler = AcmeHandler::new();
     handler.add_challenge("sdkpgjJASF12", "abc".to_string());
     let response = tokio_test::block_on(handler.respond_to_challenge(req));
     let status = response.status();

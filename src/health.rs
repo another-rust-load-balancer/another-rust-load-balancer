@@ -15,16 +15,12 @@ use std::{fmt, sync::Arc};
 
 // Amount of time in seconds to pass until the next health check is started
 const CHECK_INTERVAL: i64 = 20;
-// Threshold for the response time in milliseconds when a successful health check is marked Healthy::Slow
-const SLOW_THRESHOLD: i64 = 100;
-//  Timeout in milliseconds when the health check fails
-const TIMEOUT: u64 = 500;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct HealthConfig {
   pub slow_threshold: i64,
   pub interval: i64,
-  pub timeout: i64,
+  pub timeout: u64,
   pub path: String,
 }
 
@@ -61,23 +57,23 @@ async fn check_health_once(shared_data: Arc<ArcSwap<SharedData>>) {
   let data = shared_data.load();
 
   for pool in &data.backend_pools {
-    // println!(
-    //   "interval: {}, slow_threshold: {}, timeout: {}, path: {}",
-    //   pool.health_config.interval,
-    //   pool.health_config.slow_threshold,
-    //   pool.health_config.timeout,
-    //   pool.health_config.path
-    // );
+    println!(
+      "interval: {}, slow_threshold: {}, timeout: {}, path: {}",
+      pool.health_config.interval,
+      pool.health_config.slow_threshold,
+      pool.health_config.timeout,
+      pool.health_config.path
+    );
     for (server_address, healthiness) in &pool.addresses {
       let uri = uri::Uri::builder()
         .scheme("http")
-        .path_and_query("/")
+        .path_and_query(&pool.health_config.path)
         .authority(Authority::from_maybe_shared(server_address.clone()).unwrap())
         .build()
         .unwrap();
 
       let previous_healthiness = healthiness.load();
-      let result = contact_server(uri).await;
+      let result = contact_server(uri, pool.health_config.slow_threshold, pool.health_config.timeout).await;
 
       if previous_healthiness.as_ref() != &result {
         info!("new healthiness for {}: {}", &server_address, &result);
@@ -87,12 +83,12 @@ async fn check_health_once(shared_data: Arc<ArcSwap<SharedData>>) {
   }
 }
 
-async fn contact_server(server_address: Uri) -> Healthiness {
+async fn contact_server(server_address: Uri, slow_threshold: i64, timeout: u64) -> Healthiness {
   let http_connector = HttpConnector::new();
   let mut connector = TimeoutConnector::new(http_connector);
-  connector.set_connect_timeout(Some(Duration::from_millis(TIMEOUT)));
-  connector.set_read_timeout(Some(Duration::from_millis(TIMEOUT)));
-  connector.set_write_timeout(Some(Duration::from_millis(TIMEOUT)));
+  connector.set_connect_timeout(Some(Duration::from_millis(timeout)));
+  connector.set_read_timeout(Some(Duration::from_millis(timeout)));
+  connector.set_write_timeout(Some(Duration::from_millis(timeout)));
   let client = Client::builder().build::<_, hyper::Body>(connector);
 
   let before_request = SystemTime::now();
@@ -102,7 +98,7 @@ async fn contact_server(server_address: Uri) -> Healthiness {
       // elapsed() only fails when system time is later than "self"
       let time_to_respond = before_request.elapsed().unwrap().as_millis();
       let response_time = i64::try_from(time_to_respond);
-      if response_time.unwrap() > SLOW_THRESHOLD {
+      if response_time.unwrap() > slow_threshold {
         Healthiness::Slow(response_time.unwrap())
       } else {
         Healthiness::Healthy

@@ -47,7 +47,7 @@ jobs:
           $VCPKG_ROOT/vcpkg install openssl-windows:x64-windows
           $VCPKG_ROOT/vcpkg install openssl:x64-windows-static
           $VCPKG_ROOT/vcpkg integrate install
-          setx set VCPKGRS_DYNAMIC=1 /M
+          setx VCPKGRS_DYNAMIC=1 /M
           cargo build --verbose
         if: matrix.platform == 'windows-latest'
       - name: Build | Debug

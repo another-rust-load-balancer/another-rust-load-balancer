@@ -5,7 +5,8 @@ use crate::{
     sticky_cookie::StickyCookie, LoadBalancingStrategy,
   },
   middleware::{
-    compression::Compression, custom_error_pages::CustomErrorPages, https_redirector::HttpsRedirector, maxbodysize::MaxBodySize, Middleware, MiddlewareChain,
+    authentication::Authentication, compression::Compression, custom_error_pages::CustomErrorPages,
+    https_redirector::HttpsRedirector, maxbodysize::MaxBodySize, Middleware, MiddlewareChain,
   },
   server::{BackendPool, BackendPoolBuilder, Scheme, SharedData},
 };
@@ -257,6 +258,12 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
 
   fn try_from((name, payload): (String, Value)) -> Result<Self, Self::Error> {
     match (name.as_str(), payload) {
+      ("Authentication", Value::Table(t)) => Ok(Box::new(Authentication {
+        ldap_address: t.get("ldap_address").and_then(Value::as_str).ok_or(())?.to_string(),
+        user_directory: t.get("user_directory").and_then(Value::as_str).ok_or(())?.to_string(),
+        rdn_identifier: t.get("rdn_identifier").and_then(Value::as_str).ok_or(())?.to_string(),
+        recursive: t.get("recursive").and_then(Value::as_bool).ok_or(())?,
+      })),
       ("Compression", _) => Ok(Box::new(Compression)),
       ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),
       ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize { limit })),

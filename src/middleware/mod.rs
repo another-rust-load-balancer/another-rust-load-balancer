@@ -4,6 +4,7 @@ use gethostname::gethostname;
 use hyper::{header::HeaderValue, Body, Client, Request, Response, Uri};
 use std::net::SocketAddr;
 
+pub mod authentication;
 pub mod compression;
 pub mod https_redirector;
 pub mod maxbodysize;
@@ -17,12 +18,16 @@ pub trait Middleware: Send + Sync + std::fmt::Debug {
     chain: &MiddlewareChain,
     context: &Context<'_>,
   ) -> Result<Response<Body>, Response<Body>> {
-    let request = self.modify_request(request, context)?;
+    let request = self.modify_request(request, context).await?;
     let response = chain.forward_request(request, context).await?;
     Ok(self.modify_response(response, context))
   }
 
-  fn modify_request(&self, request: Request<Body>, _context: &Context) -> Result<Request<Body>, Response<Body>> {
+  async fn modify_request(
+    &self,
+    request: Request<Body>,
+    _context: &Context<'_>,
+  ) -> Result<Request<Body>, Response<Body>> {
     Ok(request)
   }
 

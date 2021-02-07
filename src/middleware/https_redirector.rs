@@ -3,6 +3,7 @@ use crate::{
   error_response::{bad_request, handle_internal_server_error, internal_server_error},
   server,
 };
+use async_trait::async_trait;
 use hyper::{
   header::{HOST, LOCATION},
   http::uri::{Authority, Scheme, Uri},
@@ -14,8 +15,13 @@ use std::convert::TryFrom;
 #[derive(Debug)]
 pub struct HttpsRedirector;
 
+#[async_trait]
 impl Middleware for HttpsRedirector {
-  fn modify_request(&self, request: Request<Body>, context: &Context) -> Result<Request<Body>, Response<Body>> {
+  async fn modify_request(
+    &self,
+    request: Request<Body>,
+    context: &Context<'_>,
+  ) -> Result<Request<Body>, Response<Body>> {
     match context.client_scheme {
       server::Scheme::HTTP => {
         let host_authority = parse_host_header(&request)?;

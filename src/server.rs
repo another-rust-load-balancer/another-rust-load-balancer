@@ -1,5 +1,5 @@
-use crate::acme::AcmeHandler;
 use crate::{
+  acme::AcmeHandler,
   backend_pool_matcher::BackendPoolMatcher,
   configuration::CertificateConfig,
   error_response::{bad_gateway, not_found},
@@ -29,7 +29,6 @@ use std::{
   sync::Arc,
   task::{Context, Poll},
   time::Duration,
-  usize,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -44,12 +43,12 @@ where
   IO: AsyncRead + AsyncWrite + Unpin + Send + RemoteAddress + 'static,
 {
   let service = make_service_fn(move |stream: &IO| {
+    let client_address = stream.remote_addr().expect("No remote SocketAddr");
     let shared_data = shared_data.load_full();
-    let remote_addr = stream.remote_addr().expect("No remote SocketAddr");
 
     async move {
       Ok::<_, io::Error>(MainService {
-        client_address: remote_addr,
+        client_address,
         shared_data,
         scheme,
       })
@@ -64,125 +63,10 @@ where
     .await
 }
 
-pub struct BackendPoolBuilder {
-  matcher: BackendPoolMatcher,
-  addresses: Vec<(String, ArcSwap<Healthiness>)>,
-  strategy: Box<dyn LoadBalancingStrategy>,
-  chain: MiddlewareChain,
-  schemes: HashSet<Scheme>,
-  pool_idle_timeout: Option<Duration>,
-  pool_max_idle_per_host: Option<usize>,
-}
-
-impl BackendPoolBuilder {
-  pub fn new(
-    matcher: BackendPoolMatcher,
-    addresses: Vec<(String, ArcSwap<Healthiness>)>,
-    strategy: Box<dyn LoadBalancingStrategy>,
-    chain: MiddlewareChain,
-    schemes: HashSet<Scheme>,
-  ) -> BackendPoolBuilder {
-    BackendPoolBuilder {
-      matcher,
-      addresses,
-      strategy,
-      chain,
-      schemes,
-      pool_idle_timeout: None,
-      pool_max_idle_per_host: None,
-    }
-  }
-
-  pub fn pool_idle_timeout(&mut self, duration: Duration) -> &BackendPoolBuilder {
-    self.pool_idle_timeout = Some(duration);
-    self
-  }
-
-  pub fn pool_max_idle_per_host(&mut self, max_idle: usize) -> &BackendPoolBuilder {
-    self.pool_max_idle_per_host = Some(max_idle);
-    self
-  }
-
-  pub fn build(self) -> BackendPool {
-    let mut client_builder = Client::builder();
-    if let Some(pool_idle_timeout) = self.pool_idle_timeout {
-      client_builder.pool_idle_timeout(pool_idle_timeout);
-    }
-    if let Some(pool_max_idle_per_host) = self.pool_max_idle_per_host {
-      client_builder.pool_max_idle_per_host(pool_max_idle_per_host);
-    }
-
-    let strategy = Arc::new(self.strategy);
-    let client: Client<_, Body> = client_builder.build(StrategyNotifyHttpConnector::new(strategy.clone()));
-
-    BackendPool {
-      matcher: self.matcher,
-      addresses: self.addresses,
-      strategy,
-      chain: self.chain,
-      client,
-      schemes: self.schemes,
-    }
-  }
-}
-
-#[derive(Debug)]
-pub struct BackendPool {
-  pub matcher: BackendPoolMatcher,
-  pub addresses: Vec<(String, ArcSwap<Healthiness>)>,
-  pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
-  pub chain: MiddlewareChain,
-  pub client: Client<StrategyNotifyHttpConnector, Body>,
-  pub schemes: HashSet<Scheme>,
-}
-
-impl BackendPool {
-  fn supports(&self, scheme: &Scheme) -> bool {
-    self.schemes.contains(scheme)
-  }
-}
-
-impl PartialEq for BackendPool {
-  fn eq(&self, other: &Self) -> bool {
-    self.matcher.eq(&other.matcher)
-  }
-}
-
 pub struct MainService {
   client_address: SocketAddr,
   shared_data: Arc<SharedData>,
   scheme: Scheme,
-}
-
-pub struct SharedData {
-  pub backend_pools: Vec<Arc<BackendPool>>,
-  pub certificates: HashMap<String, CertificateConfig>,
-  pub acme_handler: AcmeHandler,
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Hash)]
-pub enum Scheme {
-  HTTP,
-  HTTPS,
-}
-
-impl Display for Scheme {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Scheme::HTTP => write!(f, "http"),
-      Scheme::HTTPS => write!(f, "https"),
-    }
-  }
-}
-
-impl SharedData {
-  pub fn new(backend_pools: Vec<Arc<BackendPool>>, certificates: HashMap<String, CertificateConfig>) -> SharedData {
-    SharedData {
-      backend_pools,
-      certificates,
-      acme_handler: AcmeHandler::new(),
-    }
-  }
 }
 
 impl MainService {
@@ -248,6 +132,121 @@ impl Service<Request<Body>> for MainService {
         })
       }
       _ => Box::pin(async { Ok(not_found()) }),
+    }
+  }
+}
+
+pub struct SharedData {
+  pub backend_pools: Vec<Arc<BackendPool>>,
+  pub certificates: HashMap<String, CertificateConfig>,
+  pub acme_handler: AcmeHandler,
+}
+
+impl SharedData {
+  pub fn new(backend_pools: Vec<Arc<BackendPool>>, certificates: HashMap<String, CertificateConfig>) -> SharedData {
+    SharedData {
+      backend_pools,
+      certificates,
+      acme_handler: AcmeHandler::new(),
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct BackendPool {
+  pub matcher: BackendPoolMatcher,
+  pub addresses: Vec<(String, ArcSwap<Healthiness>)>,
+  pub strategy: Arc<Box<dyn LoadBalancingStrategy>>,
+  pub chain: MiddlewareChain,
+  pub client: Client<StrategyNotifyHttpConnector, Body>,
+  pub schemes: HashSet<Scheme>,
+}
+
+impl BackendPool {
+  fn supports(&self, scheme: &Scheme) -> bool {
+    self.schemes.contains(scheme)
+  }
+}
+
+impl PartialEq for BackendPool {
+  fn eq(&self, other: &Self) -> bool {
+    self.matcher.eq(&other.matcher)
+  }
+}
+
+pub struct BackendPoolBuilder {
+  matcher: BackendPoolMatcher,
+  addresses: Vec<(String, ArcSwap<Healthiness>)>,
+  strategy: Box<dyn LoadBalancingStrategy>,
+  chain: MiddlewareChain,
+  schemes: HashSet<Scheme>,
+  pool_idle_timeout: Option<Duration>,
+  pool_max_idle_per_host: Option<usize>,
+}
+
+impl BackendPoolBuilder {
+  pub fn new(
+    matcher: BackendPoolMatcher,
+    addresses: Vec<(String, ArcSwap<Healthiness>)>,
+    strategy: Box<dyn LoadBalancingStrategy>,
+    chain: MiddlewareChain,
+    schemes: HashSet<Scheme>,
+  ) -> BackendPoolBuilder {
+    BackendPoolBuilder {
+      matcher,
+      addresses,
+      strategy,
+      chain,
+      schemes,
+      pool_idle_timeout: None,
+      pool_max_idle_per_host: None,
+    }
+  }
+
+  pub fn pool_idle_timeout(&mut self, duration: Duration) -> &BackendPoolBuilder {
+    self.pool_idle_timeout = Some(duration);
+    self
+  }
+
+  pub fn pool_max_idle_per_host(&mut self, max_idle: usize) -> &BackendPoolBuilder {
+    self.pool_max_idle_per_host = Some(max_idle);
+    self
+  }
+
+  pub fn build(self) -> BackendPool {
+    let mut client_builder = Client::builder();
+    if let Some(pool_idle_timeout) = self.pool_idle_timeout {
+      client_builder.pool_idle_timeout(pool_idle_timeout);
+    }
+    if let Some(pool_max_idle_per_host) = self.pool_max_idle_per_host {
+      client_builder.pool_max_idle_per_host(pool_max_idle_per_host);
+    }
+
+    let strategy = Arc::new(self.strategy);
+    let client: Client<_, Body> = client_builder.build(StrategyNotifyHttpConnector::new(strategy.clone()));
+
+    BackendPool {
+      matcher: self.matcher,
+      addresses: self.addresses,
+      strategy,
+      chain: self.chain,
+      client,
+      schemes: self.schemes,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Hash)]
+pub enum Scheme {
+  HTTP,
+  HTTPS,
+}
+
+impl Display for Scheme {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Scheme::HTTP => write!(f, "http"),
+      Scheme::HTTPS => write!(f, "https"),
     }
   }
 }

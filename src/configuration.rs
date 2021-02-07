@@ -1,3 +1,4 @@
+use crate::acme::AcmeHandler;
 use crate::{
   health::Healthiness,
   load_balancing::{
@@ -9,7 +10,6 @@ use crate::{
   },
   server::{BackendPool, BackendPoolBuilder, Scheme, SharedData},
 };
-use crate::acme::AcmeHandler;
 use arc_swap::ArcSwap;
 use log::{info, trace, warn};
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
@@ -133,7 +133,7 @@ impl From<Config> for SharedData {
     SharedData {
       backend_pools,
       certificates,
-      acme_handler
+      acme_handler,
     }
   }
 }
@@ -272,6 +272,14 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
 
 #[derive(Debug, Deserialize)]
 pub enum CertificateConfig {
-  LocalCertificate { certificate_path: String, private_key_path: String },
-  ACME { staging: bool, email: String, alt_names: Vec<String>, persist_dir: String }
+  Local {
+    certificate_path: String,
+    private_key_path: String,
+  },
+  ACME {
+    staging: bool,
+    email: String,
+    alt_names: Vec<String>,
+    persist_dir: String,
+  },
 }

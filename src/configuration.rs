@@ -9,6 +9,7 @@ use crate::{
   },
   server::{BackendPool, BackendPoolBuilder, Scheme, SharedData},
 };
+use crate::acme::AcmeHandler;
 use arc_swap::ArcSwap;
 use log::{info, trace, warn};
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
@@ -128,9 +129,11 @@ impl From<Config> for SharedData {
   fn from(other: Config) -> Self {
     let certificates = other.certificates;
     let backend_pools = other.backend_pools.into_iter().map(|b| Arc::new(b.into())).collect();
+    let acme_handler = Arc::new(AcmeHandler::new());
     SharedData {
       backend_pools,
       certificates,
+      acme_handler
     }
   }
 }
@@ -268,7 +271,7 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CertificateConfig {
-  pub certificate_path: String,
-  pub private_key_path: String,
+pub enum CertificateConfig {
+  LocalCertificate { certificate_path: String, private_key_path: String },
+  ACME { email: String, alt_names: Vec<String>, persist_dir: String }
 }

@@ -31,6 +31,7 @@ use std::{
   usize,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
+use crate::acme::AcmeHandler;
 
 pub async fn create<'a, I, IE, IO>(
   acceptor: I,
@@ -156,6 +157,7 @@ pub struct MainService {
 pub struct SharedData {
   pub backend_pools: Vec<Arc<BackendPool>>,
   pub certificates: HashMap<String, CertificateConfig>,
+  pub acme_handler: Arc<AcmeHandler>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Hash)]
@@ -198,6 +200,14 @@ impl Service<Request<Body>> for MainService {
   }
 
   fn call(&mut self, request: Request<Body>) -> Self::Future {
+    if self.shared_data.acme_handler.is_challenge(&request) {
+      let acme_handler = self.shared_data.acme_handler.clone();
+      return Box::pin(async move {
+        let response = acme_handler.respond_to_challenge(request).await;
+        Ok(response)
+      })
+    }
+
     debug!("{:#?} {} {}", request.version(), request.method(), request.uri());
     match self.pool_by_req(&request) {
       Some(pool) => {
@@ -261,6 +271,7 @@ mod tests {
           )
           .build(),
         )],
+        acme_handler: Arc::new(AcmeHandler::new())
       }),
     }
   }

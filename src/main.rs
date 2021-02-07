@@ -6,6 +6,7 @@ use server::{Scheme, SharedData};
 use std::{io, sync::Arc};
 use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
+use crate::configuration::CertificateConfig::{LocalCertificate, ACME};
 
 mod backend_pool_matcher;
 mod configuration;
@@ -19,6 +20,7 @@ mod middleware;
 mod server;
 mod tls;
 mod utils;
+mod acme;
 
 // Dual Stack if /proc/sys/net/ipv6/bindv6only has default value 0
 // rf https://man7.org/linux/man-pages/man7/ipv6.7.html
@@ -72,15 +74,30 @@ async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resu
 
   let data = shared_data.load();
   for (sni_name, certificate) in &data.certificates {
-    tls::add_certificate(
-      &mut cert_resolver,
-      &sni_name,
-      &certificate.certificate_path,
-      &certificate.private_key_path,
-    )?;
+    match certificate {
+      LocalCertificate { certificate_path, private_key_path } => {
+        tls::add_custom_certificate(
+          &mut cert_resolver,
+          &sni_name,
+          certificate_path,
+          private_key_path,
+        )?;
+      },
+      ACME { email, alt_names, persist_dir } => {
+        let cert = data.acme_handler.initiate_challenge(
+          persist_dir, email, sni_name, alt_names).await
+          .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        tls::add_acme_certificate(
+          &mut cert_resolver,
+          &sni_name,
+          cert
+        )?;
+      }
+    }
   }
   tls_config.cert_resolver = Arc::new(cert_resolver);
 
+  // TODO refresh certificates once they expire?
   let https = Https { tls_config };
   let acceptor = https.produce_acceptor(LOCAL_HTTPS_ADDRESS).await?;
 

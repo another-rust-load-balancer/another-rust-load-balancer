@@ -4,92 +4,74 @@ use crate::{
     ip_hash::IPHash, least_connection::LeastConnection, random::Random, round_robin::RoundRobin,
     sticky_cookie::StickyCookie, LoadBalancingStrategy,
   },
-  middleware::{compression::Compression, https_redirector::HttpsRedirector, maxbodysize::MaxBodySize, Middleware, MiddlewareChain},
+  middleware::{
+    compression::Compression, https_redirector::HttpsRedirector, maxbodysize::MaxBodySize, Middleware, MiddlewareChain,
+  },
   server::{BackendPool, BackendPoolBuilder, Scheme, SharedData},
 };
 use crate::acme::AcmeHandler;
 use arc_swap::ArcSwap;
-use futures::Future;
-use log::{error, info, warn};
-use notify::{watcher, DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
+use log::{info, trace, warn};
+use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
 use serde::Deserialize;
 use std::{
   collections::{HashMap, HashSet},
   convert::{TryFrom, TryInto},
-  fs,
-  sync::{mpsc::channel, Arc},
+  fmt::Debug,
+  fs, io,
+  path::Path,
+  sync::{
+    mpsc::{channel, RecvError},
+    Arc,
+  },
+  thread::spawn,
   time::Duration,
 };
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use toml::{value::Table, Value};
 use toml::value::Value::Integer;
+use toml::{value::Table, Value};
 
-pub struct BackendConfigWatcher {
-  toml_path: String,
+pub async fn read_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<SharedData>>, io::Error> {
+  let config = Config::read(&path)?;
+  Ok(Arc::new(ArcSwap::from_pointee(config.into())))
 }
 
-impl BackendConfigWatcher {
-  pub fn new(toml_path: String) -> BackendConfigWatcher {
-    BackendConfigWatcher { toml_path }
-  }
+pub fn start_config_watcher<P>(path: P, config: Arc<ArcSwap<SharedData>>)
+where
+  P: AsRef<Path> + Send + 'static,
+{
+  spawn(move || update_config_on_file_change(path, config));
+}
 
-  fn start_config_watcher(toml_path: &str, cs: UnboundedSender<Config>) -> RecommendedWatcher {
-    let toml_path = toml_path.to_string();
-    let (tx, rx) = channel();
-    let mut watcher = watcher(tx, Duration::from_secs(10)).unwrap();
-    watcher.watch(&toml_path, RecursiveMode::NonRecursive).unwrap();
+fn update_config_on_file_change<P: AsRef<Path>>(path: P, config: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
+  let (tx, rx) = channel();
+  let mut watcher = watcher(tx, Duration::from_secs(1)).map_err(map_notify_error)?;
+  watcher
+    .watch(path, RecursiveMode::NonRecursive)
+    .map_err(map_notify_error)?;
 
-    std::thread::spawn(move || loop {
-      let option_config = match rx.recv() {
-        Ok(event) => match event {
-          DebouncedEvent::NoticeWrite(_) => Config::new(&toml_path),
-          DebouncedEvent::Write(_) => Config::new(&toml_path),
-          _ => None,
-        },
-        Err(_) => {
-          return;
-        }
-      };
-
-      if let Some(config) = option_config {
-        match cs.send(config) {
-          Ok(_) => {}
-          Err(e) => error!(
-            "Error occurred when sending backend config from config watcher thread: {:?}",
-            e
-          ),
-        };
-      }
-    });
-    watcher
-  }
-
-  pub async fn watch_config_and_apply<F, Fut, Out>(&mut self, task_fn: F) -> !
-  where
-    F: Fn(Arc<ArcSwap<SharedData>>) -> Fut,
-    Fut: Future<Output = Out> + 'static + Send,
-    Out: 'static + Send,
-  {
-    let (cs, mut cr) = unbounded_channel();
-    // dropping this would stop the config watcher
-    let _watcher = BackendConfigWatcher::start_config_watcher(&self.toml_path, cs);
-
-    let initial_config = Config::new(&self.toml_path);
-    let initial_config = if initial_config.is_some() {
-      initial_config.unwrap()
-    } else {
-      cr.recv().await.unwrap()
-    };
-
-    let shared_data: SharedData = initial_config.into();
-    let config = Arc::new(ArcSwap::from(Arc::new(shared_data)));
-    tokio::spawn(task_fn(config.clone()));
-
-    loop {
-      let new_config = cr.recv().await.unwrap();
-      config.store(Arc::new(new_config.into()));
+  loop {
+    match rx.recv().map_err(map_recv_error)? {
+      DebouncedEvent::Write(path) => match Config::read(&path) {
+        Ok(new_config) => config.store(Arc::new(new_config.into())),
+        Err(e) => warn!("{}", e),
+      },
+      DebouncedEvent::Remove(path) => warn!("{} was deleted", path.display()),
+      e => trace!("{:?}", e),
     }
   }
+}
+
+fn map_notify_error(error: notify::Error) -> io::Error {
+  match error {
+    notify::Error::Generic(e) => io::Error::new(io::ErrorKind::Other, e),
+    notify::Error::Io(e) => e,
+    notify::Error::PathNotFound => io::Error::new(io::ErrorKind::NotFound, error),
+    notify::Error::WatchNotFound => io::Error::new(io::ErrorKind::NotFound, error),
+  }
+}
+
+fn map_recv_error(error: RecvError) -> io::Error {
+  io::Error::new(io::ErrorKind::BrokenPipe, error)
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,28 +82,31 @@ struct Config {
 }
 
 impl Config {
-  fn new(toml_path: &str) -> Option<Config> {
-    let toml_str_result = fs::read_to_string(toml_path);
-    let toml_str = match toml_str_result {
-      Ok(toml_str) => toml_str,
-      Err(e) => {
-        warn!("Error occurred when reading configuration file {}: {}", toml_path, e);
-        return None;
-      }
-    };
-
-    let config_result: Result<Config, toml::de::Error> = toml::from_str(toml_str.as_str());
-    match config_result {
-      Ok(config) => {
-        info!("Successfully parsed configuration!");
-        config.print_warnings();
-        Some(config)
-      }
-      Err(e) => {
-        warn!("Error occurred when parsing configuration file {}: {}", toml_path, e);
-        None
-      }
-    }
+  fn read<P: AsRef<Path>>(toml_path: P) -> io::Result<Config> {
+    let toml_str = fs::read_to_string(&toml_path).map_err(|e| {
+      io::Error::new(
+        e.kind(),
+        format!(
+          "Error occurred when reading configuration file {}: {}",
+          toml_path.as_ref().display(),
+          e
+        ),
+      )
+    })?;
+    let config: Config = toml::from_str(&toml_str).map_err(|e| {
+      let e = io::Error::from(e);
+      io::Error::new(
+        e.kind(),
+        format!(
+          "Error occurred when parsing configuration file {}: {}",
+          toml_path.as_ref().display(),
+          e
+        ),
+      )
+    })?;
+    info!("Successfully parsed configuration!");
+    config.print_warnings();
+    Ok(config)
   }
 
   fn print_warnings(&self) {
@@ -280,7 +265,7 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
     match (name.as_str(), payload) {
       ("Compression", _) => Ok(Box::new(Compression)),
       ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),
-      ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize{limit})),
+      ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize { limit })),
       _ => Err(()),
     }
   }

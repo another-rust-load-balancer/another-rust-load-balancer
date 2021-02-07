@@ -83,7 +83,7 @@ async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resu
           private_key_path,
         )?;
       },
-      ACME { email, alt_names, persist_dir: persist_dir } => {
+      ACME { email, alt_names, persist_dir } => {
         let cert = data.acme_handler.initiate_challenge(
           persist_dir, email, sni_name, alt_names).await
           .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;

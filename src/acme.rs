@@ -40,11 +40,12 @@ impl AcmeHandler {
     let mut challenges = self.challenges.lock().unwrap();
     challenges.iter().position(|c| c.token == token)
       .map(|i| challenges.remove(i));
-
   }
 
-  fn start_challenge_handler(ord_new: NewOrder<FilePersist>,
-                             cs: UnboundedSender<Either<(String, String), Result<Certificate, Error>>>) {
+  fn start_challenge_handler(
+    ord_new: NewOrder<FilePersist>,
+    cs: UnboundedSender<Either<(String, String), Result<Certificate, Error>>>
+  ) {
     // TODO maybe add own async implementation of the acme lib so we can use an async fn instead of a thread
     fn generate_and_validate_challenge(
       mut ord_new: NewOrder<FilePersist>,
@@ -70,12 +71,19 @@ impl AcmeHandler {
     }
 
     std::thread::spawn(move || {
+      // TODO add retry
       let result = generate_and_validate_challenge(ord_new, &cs);
       let _ = cs.send(Right(result));
     });
   }
 
-  pub async fn initiate_challenge(&self, persist_dir: &str, email: &str, primary_name: &str, alt_names: &Vec<String>) -> Result<Certificate, Error> {
+  pub async fn initiate_challenge(
+    &self,
+    persist_dir: &str,
+    email: &str,
+    primary_name: &str,
+    alt_names: &Vec<String>
+  ) -> Result<Certificate, Error> {
     std::fs::create_dir_all(persist_dir).map_err(|e| Error::Other(e.to_string()))?;
     let persist = FilePersist::new(persist_dir);
     let dir = Directory::from_url(persist, DirectoryUrl::LetsEncryptStaging)?;
@@ -101,7 +109,6 @@ impl AcmeHandler {
           result = cr.recv().await.unwrap();
           self.remove_challenge(&token);
         },
-        // TODO add retry
         Right(cert) => return cert
       }
     }

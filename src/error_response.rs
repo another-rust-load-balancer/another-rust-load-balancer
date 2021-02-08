@@ -49,7 +49,14 @@ pub fn log_error<E: Error>(error: E) {
 
 pub fn request_entity_to_large() -> Response<Body> {
   Response::builder()
-      .status(StatusCode::PAYLOAD_TOO_LARGE)
-      .body(Body::empty())
-      .unwrap()
+    .status(StatusCode::PAYLOAD_TOO_LARGE)
+    .body(Body::empty())
+    .unwrap()
+}
+
+pub fn too_many_requests() -> Response<Body> {
+  Response::builder()
+    .status(StatusCode::TOO_MANY_REQUESTS)
+    .body(Body::from("429 - Too Many Requests"))
+    .unwrap()
 }

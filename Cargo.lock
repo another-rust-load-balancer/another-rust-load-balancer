@@ -67,6 +67,7 @@ dependencies = [
  "hyper-rustls",
  "hyper-timeout",
  "ldap3",
+ "linked-hash-map",
  "log",
  "log4rs",
  "notify",

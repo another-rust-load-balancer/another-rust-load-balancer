@@ -261,6 +261,16 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
 
   fn try_from((name, payload): (String, Value)) -> Result<Self, Self::Error> {
     match (name.as_str(), payload) {
+      ("RateLimiter", Value::Table(t)) => Ok(Box::new(RateLimiter::new(
+        t.get("limit")
+          .and_then(Value::as_integer)
+          .and_then(|it| it.try_into().ok())
+          .ok_or(())?,
+        t.get("window_sec")
+          .and_then(Value::as_integer)
+          .and_then(|it| it.try_into().ok())
+          .ok_or(())?,
+      ))),
       ("Authentication", Value::Table(t)) => Ok(Box::new(Authentication {
         ldap_address: t.get("ldap_address").and_then(Value::as_str).ok_or(())?.to_string(),
         user_directory: t.get("user_directory").and_then(Value::as_str).ok_or(())?.to_string(),
@@ -270,7 +280,6 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
       ("Compression", _) => Ok(Box::new(Compression)),
       ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),
       ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize { limit })),
-      ("RateLimiter", Integer(limit)) => Ok(Box::new(RateLimiter::new(limit))),
       ("CustomErrorPages", ValueTable(t)) => Ok(Box::new(CustomErrorPages::try_from(t)?)),
       _ => Err(()),
     }

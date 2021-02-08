@@ -13,7 +13,10 @@ Parameters:
 
 ```toml
 [backend_pools.middlewares.Authentication]
-Authentication = {ldap_address="ldap://172.28.1.7:1389", user_directory="dc=example,dc=org", rdn_identifier="cn", recursive=true}
+ldap_address = "ldap://172.28.1.7:1389"
+user_directory = "dc=example,dc=org"
+rdn_identifier = "cn"
+recursive = true
 ```
 
 ## Compression
@@ -27,8 +30,7 @@ Supported algorithms:
 - brotli
 
 ```toml
-[backend_pools.middlewares]
-Compression = {}
+[backend_pools.middlewares.Compression]
 ```
 
 ## Custom Error Pages
@@ -36,8 +38,9 @@ Compression = {}
 If the backend server responds with a matching status code, a HTML file named `{STATUS_CODE}.html` inside the provided `location` folder will be sent to the client instead.
 
 ```toml
-[backend_pools.middlewares]
-CustomErrorPages = { location = "errorpages/", errors = [404, 500]}
+[backend_pools.middlewares.CustomErrorPages]
+location = "errorpages/"
+errors = [404, 500]
 ```
 
 ## HTTPS Redirector
@@ -45,8 +48,7 @@ CustomErrorPages = { location = "errorpages/", errors = [404, 500]}
 All requests sent via HTTP will receive a `301 Moved Permanently` and will be redirected to the `HTTPS` version of the URL.
 
 ```toml
-[backend_pools.middlewares]
-HttpsRedirector = {}
+[backend_pools.middlewares.HttpsRedirector]
 ```
 
 ## Max Body Size
@@ -54,8 +56,8 @@ HttpsRedirector = {}
 All requests with a `Content-Length` greater than the provided threshold will be aborted and a response of `413 Payload Too Large` is returned.
 
 ```toml
-[backend_pools.middlewares]
-MaxBodySize = 256
+[backend_pools.middlewares.MaxBodySize]
+limit = 256
 ```
 
 ## Rate Limiter
@@ -63,6 +65,7 @@ MaxBodySize = 256
 If a client sends more than `limit` messages within `window_sec` seconds, they will be rejected with a `429 Too Many Requests` response.
 
 ```toml
-[backend_pools.middlewares]
-RateLimiter = {limit=2, window_sec=10}
+[backend_pools.middlewares.RateLimiter]
+limit = 2
+window_sec = 10
 ```

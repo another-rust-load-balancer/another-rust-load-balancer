@@ -28,8 +28,6 @@ use std::{
   thread::spawn,
   time::Duration,
 };
-use toml::value::Value::Integer;
-use toml::value::Value::Table as ValueTable;
 use toml::{value::Table, Value};
 
 pub async fn read_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<SharedData>>, io::Error> {
@@ -279,8 +277,10 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
       })),
       ("Compression", _) => Ok(Box::new(Compression)),
       ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),
-      ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize { limit })),
-      ("CustomErrorPages", ValueTable(t)) => Ok(Box::new(CustomErrorPages::try_from(t)?)),
+      ("MaxBodySize", Value::Table(t)) => Ok(Box::new(MaxBodySize {
+        limit: t.get("limit").and_then(Value::as_integer).ok_or(())?,
+      })),
+      ("CustomErrorPages", Value::Table(t)) => Ok(Box::new(CustomErrorPages::try_from(t)?)),
       _ => Err(()),
     }
   }

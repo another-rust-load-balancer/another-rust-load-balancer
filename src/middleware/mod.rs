@@ -6,9 +6,10 @@ use std::net::SocketAddr;
 
 pub mod authentication;
 pub mod compression;
+pub mod custom_error_pages;
 pub mod https_redirector;
 pub mod maxbodysize;
-pub mod custom_error_pages;
+pub mod rate_limiter;
 
 #[async_trait]
 pub trait Middleware: Send + Sync + std::fmt::Debug {

@@ -6,7 +6,8 @@ use crate::{
   },
   middleware::{
     authentication::Authentication, compression::Compression, custom_error_pages::CustomErrorPages,
-    https_redirector::HttpsRedirector, maxbodysize::MaxBodySize, Middleware, MiddlewareChain,
+    https_redirector::HttpsRedirector, maxbodysize::MaxBodySize, rate_limiter::RateLimiter, Middleware,
+    MiddlewareChain,
   },
   server::{BackendPool, BackendPoolBuilder, Scheme, SharedData},
 };
@@ -269,6 +270,7 @@ impl TryFrom<(String, Value)> for Box<dyn Middleware> {
       ("Compression", _) => Ok(Box::new(Compression)),
       ("HttpsRedirector", _) => Ok(Box::new(HttpsRedirector)),
       ("MaxBodySize", Integer(limit)) => Ok(Box::new(MaxBodySize { limit })),
+      ("RateLimiter", Integer(limit)) => Ok(Box::new(RateLimiter::new(limit))),
       ("CustomErrorPages", ValueTable(t)) => Ok(Box::new(CustomErrorPages::try_from(t)?)),
       _ => Err(()),
     }

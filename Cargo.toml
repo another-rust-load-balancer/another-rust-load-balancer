@@ -38,3 +38,4 @@ toml = { version = "0.5", features = ["preserve_order"] }
 url = "2.2"
 http-auth-basic = "0.1"
 ldap3 = "0.9"
+linked-hash-map = "0.5"

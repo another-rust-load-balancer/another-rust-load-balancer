@@ -34,7 +34,7 @@ All requests sent via HTTP will receive a `301 Moved Permanently` and will be re
 
 ```toml
 [backend_pools.middlewares]
-CustomErrorPages = { location = "errorpages/", errors = [404, 500]}
+HttpsRedirector = {}
 ```
 
 # Max Body Size

@@ -48,7 +48,10 @@ where
 
     match receiver.borrow().deref() {
       DebouncedEvent::Write(path) => match read_shared_data(&path).await {
-        Ok(shared_data) => config.store(Arc::new(shared_data)),
+        Ok(shared_data) => {
+          config.store(Arc::new(shared_data));
+          info!("Reloaded configuration");
+        }
         Err(e) => warn!("{}", e),
       },
       DebouncedEvent::Remove(path) => warn!("{} was deleted", path.display()),
@@ -203,7 +206,6 @@ impl Config {
         ),
       )
     })?;
-    info!("Successfully parsed configuration!");
     config.print_warnings();
     Ok(config)
   }

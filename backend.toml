@@ -35,6 +35,7 @@ timeout = 400
 location = "errorpages/"
 errors = [404, 500]
 
+
 [backend_pools.middlewares.RateLimiter]
 limit = 2
 window_sec = 10

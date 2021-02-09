@@ -254,8 +254,8 @@ mod tests {
   fn generate_config(shared_data: SharedData) -> RuntimeConfig {
     RuntimeConfig {
       shared_data,
-      http_address: "".parse().unwrap(),
-      https_address: "".parse().unwrap(),
+      http_address: "0.0.0.0:80".parse().unwrap(),
+      https_address: "0.0.0.0:443".parse().unwrap(),
       certificates: HashMap::new(),
     }
   }

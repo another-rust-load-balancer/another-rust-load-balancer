@@ -19,9 +19,11 @@ ARLB (Another Rust Load Balancer) is a rust reverse proxy and load balancer base
   - Sticky Cookie
 - Middlewares
   - Compression (gzip, deflate, brotli)
-  - HTTP Authentication (LDAP)
+  - HTTP Basic Auth (LDAP)
   - HTTP to HTTPS Redirect
   - Custom Error Pages
+  - Max Request Body Size
+  - Rate Limiting
 - Health Checks
 - ACME
 - Advanced Backend Matching Strategies

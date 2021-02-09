@@ -10,16 +10,17 @@ matcher = "Host('whoami.localhost')"
 addresses = ["127.0.0.1:8080", "127.0.0.1:8081", "127.0.0.1:8082"]
 schemes = ["HTTP", "HTTPS"]
 strategy = { RoundRobin = {} }
-[backend_pools.middlewares]
-HttpsRedirector = {}
+[backend_pools.middlewares.HttpsRedirector]
 
 [[backend_pools]]
 matcher = "Host('youtube.de') && Path('/admin')"
 addresses = ["192.168.0.2:3000"]
 schemes = ["HTTPS"]
 strategy = { RoundRobin = {} }
-[backend_pools.middlewares]
-Compression = {}
+[backend_pools.middlewares.RateLimiter]
+limit = 10
+window_sec = 1
+[backend_pools.middlewares.Compression]
 
 [certificates]
 "whoami.localhost" = { Local = { certificate_path = "x509/whoami.localhost.cer", private_key_path = "x509/whoami.localhost.key" } }
@@ -127,9 +128,8 @@ Examples:
 
 ```toml
 # Order of middlewares is kept
-[backend_pools.middlewares]
-HttpsRedirector = {}
-Compression = {}
+[backend_pools.middlewares.HttpsRedirector]
+[backend_pools.middlewares.Compression]
 ```
 
 A full list of middlewares and their configuration can be found in [Middlewares](middlewares.md)

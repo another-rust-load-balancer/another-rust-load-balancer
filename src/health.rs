@@ -1,5 +1,6 @@
 use crate::server::BackendPool;
-use arc_swap::access::Access;
+use arc_swap::{access::Access, ArcSwap};
+use futures::future::join_all;
 use hyper::{
   client::HttpConnector,
   http::uri::{self, Authority},
@@ -49,38 +50,40 @@ where
 {
   let backend_pools = Arc::new(backend_pools);
   let mut interval_timer = tokio::time::interval(chrono::Duration::seconds(CHECK_INTERVAL).to_std().unwrap());
+  let backend_pools = backend_pools.load();
   loop {
     interval_timer.tick().await;
     let backend_pools = backend_pools.clone();
-    tokio::spawn(async move {
-      check_health_once(backend_pools).await;
-    });
+    let mut checks = Vec::new();
+
+    for pool in backend_pools.deref() {
+      for (server_address, healthiness) in &pool.addresses {
+        let future = check_server_health_once(server_address.clone(), healthiness, &pool.health_config);
+        checks.push(future);
+      }
+    }
+    join_all(checks).await;
   }
 }
 
-async fn check_health_once<A>(backend_pools: Arc<A>)
-where
-  A: Access<Vec<Arc<BackendPool>>> + Send + Sync,
-{
-  let backend_pools = backend_pools.load();
+async fn check_server_health_once(
+  server_address: String,
+  healthiness: &ArcSwap<Healthiness>,
+  health_config: &HealthConfig,
+) {
+  let uri = uri::Uri::builder()
+    .scheme("http")
+    .path_and_query(&health_config.path)
+    .authority(Authority::from_maybe_shared(server_address.clone()).unwrap())
+    .build()
+    .unwrap();
 
-  for pool in backend_pools.deref() {
-    for (server_address, healthiness) in &pool.addresses {
-      let uri = uri::Uri::builder()
-        .scheme("http")
-        .path_and_query(&pool.health_config.path)
-        .authority(Authority::from_maybe_shared(server_address.clone()).unwrap())
-        .build()
-        .unwrap();
+  let previous_healthiness = healthiness.load();
+  let result = contact_server(uri, health_config.slow_threshold, health_config.timeout).await;
 
-      let previous_healthiness = healthiness.load();
-      let result = contact_server(uri, pool.health_config.slow_threshold, pool.health_config.timeout).await;
-
-      if previous_healthiness.as_ref() != &result {
-        info!("new healthiness for {}: {}", &server_address, &result);
-        healthiness.store(Arc::new(result));
-      }
-    }
+  if previous_healthiness.as_ref() != &result {
+    info!("new healthiness for {}: {}", &server_address, &result);
+    healthiness.store(Arc::new(result));
   }
 }
 

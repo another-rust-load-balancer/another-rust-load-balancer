@@ -1,5 +1,5 @@
-use crate::server::SharedData;
-use arc_swap::ArcSwap;
+use crate::server::BackendPool;
+use arc_swap::access::Access;
 use hyper::{
   client::HttpConnector,
   http::uri::{self, Authority},
@@ -8,9 +8,9 @@ use hyper::{
 use hyper_timeout::TimeoutConnector;
 use log::info;
 use serde::Deserialize;
-use std::convert::TryFrom;
 use std::time::Duration;
 use std::time::SystemTime;
+use std::{convert::TryFrom, ops::Deref};
 use std::{fmt, sync::Arc};
 
 // Amount of time in seconds to pass until the next health check is started
@@ -42,21 +42,29 @@ impl fmt::Display for Healthiness {
   }
 }
 
-pub async fn watch_health(shared_data: Arc<ArcSwap<SharedData>>) {
+pub async fn watch_health<A, G>(backend_pools: A)
+where
+  A: Access<Vec<Arc<BackendPool>>, Guard = G> + Send + Sync + 'static,
+  G: Deref<Target = Vec<Arc<BackendPool>>> + Send + Sync,
+{
+  let backend_pools = Arc::new(backend_pools);
   let mut interval_timer = tokio::time::interval(chrono::Duration::seconds(CHECK_INTERVAL).to_std().unwrap());
   loop {
     interval_timer.tick().await;
-    let data_copy = shared_data.clone();
+    let backend_pools = backend_pools.clone();
     tokio::spawn(async move {
-      check_health_once(data_copy).await;
+      check_health_once(backend_pools).await;
     });
   }
 }
 
-async fn check_health_once(shared_data: Arc<ArcSwap<SharedData>>) {
-  let data = shared_data.load();
+async fn check_health_once<A>(backend_pools: Arc<A>)
+where
+  A: Access<Vec<Arc<BackendPool>>> + Send + Sync,
+{
+  let backend_pools = backend_pools.load();
 
-  for pool in &data.backend_pools {
+  for pool in backend_pools.deref() {
     for (server_address, healthiness) in &pool.addresses {
       let uri = uri::Uri::builder()
         .scheme("http")

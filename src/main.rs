@@ -1,8 +1,8 @@
 use arc_swap::{access::Map, ArcSwap};
 use clap::{App, Arg};
-use configuration::{read_config, watch_config};
+use configuration::{read_config, watch_config, RuntimeConfig};
 use listeners::{AcceptorProducer, Https};
-use server::{Scheme, SharedData};
+use server::Scheme;
 use std::{io, sync::Arc};
 use tls::ReconfigurableCertificateResolver;
 use tokio::try_join;
@@ -21,11 +21,6 @@ mod middleware;
 mod server;
 mod tls;
 mod utils;
-
-// Dual Stack if /proc/sys/net/ipv6/bindv6only has default value 0
-// rf https://man7.org/linux/man-pages/man7/ipv6.7.html
-const LOCAL_HTTP_ADDRESS: &str = "[::]:80";
-const LOCAL_HTTPS_ADDRESS: &str = "[::]:443";
 
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {
@@ -56,26 +51,29 @@ pub async fn main() -> Result<(), io::Error> {
   Ok(())
 }
 
-async fn watch_health(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
-  health::watch_health(shared_data).await;
+async fn watch_health(config: Arc<ArcSwap<RuntimeConfig>>) -> Result<(), io::Error> {
+  let backend_pools = Map::new(config, |it: &RuntimeConfig| &it.shared_data.backend_pools);
+  health::watch_health(backend_pools).await;
   Ok(())
 }
 
-async fn listen_for_http_request(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
+async fn listen_for_http_request(config: Arc<ArcSwap<RuntimeConfig>>) -> Result<(), io::Error> {
   let http = listeners::Http;
-  let acceptor = http.produce_acceptor(LOCAL_HTTP_ADDRESS).await?;
+  let address = config.load().http_address;
+  let acceptor = http.produce_acceptor(address).await?;
 
-  server::create(acceptor, shared_data, Scheme::HTTP).await
+  server::create(acceptor, config, Scheme::HTTP).await
 }
 
-async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
+async fn listen_for_https_request(config: Arc<ArcSwap<RuntimeConfig>>) -> Result<(), io::Error> {
   let mut tls_config = ServerConfig::new(NoClientAuth::new());
-  let certificates = Map::new(shared_data.clone(), |it: &SharedData| &it.certificates);
+  let certificates = Map::new(config.clone(), |it: &RuntimeConfig| &it.certificates);
   let cert_resolver = ReconfigurableCertificateResolver::new(certificates);
   tls_config.cert_resolver = Arc::new(cert_resolver);
 
   let https = Https { tls_config };
-  let acceptor = https.produce_acceptor(LOCAL_HTTPS_ADDRESS).await?;
+  let address = config.load().https_address;
+  let acceptor = https.produce_acceptor(address).await?;
 
-  server::create(acceptor, shared_data, Scheme::HTTPS).await
+  server::create(acceptor, config, Scheme::HTTPS).await
 }

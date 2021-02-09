@@ -1,6 +1,7 @@
 use crate::{
   acme::AcmeHandler,
   backend_pool_matcher::BackendPoolMatcher,
+  configuration::RuntimeConfig,
   error_response::{bad_gateway, not_found},
   health::{HealthConfig, Healthiness},
   http_client::StrategyNotifyHttpConnector,
@@ -19,7 +20,7 @@ use hyper::{
 use log::debug;
 use serde::Deserialize;
 use std::{
-  collections::{HashMap, HashSet},
+  collections::HashSet,
   error::Error,
   fmt::Display,
   io,
@@ -30,11 +31,10 @@ use std::{
   time::Duration,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_rustls::{rustls::sign::CertifiedKey, webpki::DNSName};
 
 pub async fn create<'a, I, IE, IO>(
   acceptor: I,
-  shared_data: Arc<ArcSwap<SharedData>>,
+  config: Arc<ArcSwap<RuntimeConfig>>,
   scheme: Scheme,
 ) -> Result<(), io::Error>
 where
@@ -44,12 +44,12 @@ where
 {
   let service = make_service_fn(move |stream: &IO| {
     let client_address = stream.remote_addr().expect("No remote SocketAddr");
-    let shared_data = shared_data.clone();
+    let config = config.clone();
 
     async move {
       Ok::<_, io::Error>(MainService {
         client_address,
-        shared_data,
+        config,
         scheme,
       })
     }
@@ -65,7 +65,7 @@ where
 
 pub struct MainService {
   client_address: SocketAddr,
-  shared_data: Arc<ArcSwap<SharedData>>,
+  config: Arc<ArcSwap<RuntimeConfig>>,
   scheme: Scheme,
 }
 
@@ -84,7 +84,8 @@ impl Service<Request<Body>> for MainService {
   fn call(&mut self, request: Request<Body>) -> Self::Future {
     debug!("{:#?} {} {}", request.version(), request.method(), request.uri());
 
-    let shared_data = self.shared_data.load();
+    let config = self.config.load();
+    let shared_data = &config.shared_data;
 
     if let Some(response) = shared_data.acme_handler.respond_to_challenge(&request) {
       return Box::pin(async move { Ok(response) });
@@ -137,22 +138,7 @@ fn pool_by_req(shared_data: &SharedData, request: &Request<Body>, scheme: &Schem
 
 pub struct SharedData {
   pub backend_pools: Vec<Arc<BackendPool>>,
-  pub certificates: HashMap<DNSName, CertifiedKey>,
   pub acme_handler: AcmeHandler,
-}
-
-impl SharedData {
-  pub fn new(
-    backend_pools: Vec<Arc<BackendPool>>,
-    certificates: HashMap<DNSName, CertifiedKey>,
-    acme_handler: AcmeHandler,
-  ) -> SharedData {
-    SharedData {
-      backend_pools,
-      certificates,
-      acme_handler,
-    }
-  }
 }
 
 #[derive(Debug)]
@@ -263,14 +249,22 @@ impl Display for Scheme {
 mod tests {
   use super::*;
   use crate::load_balancing::random::Random;
-  use std::iter::FromIterator;
+  use std::{collections::HashMap, iter::FromIterator};
 
+  fn generate_config(shared_data: SharedData) -> RuntimeConfig {
+    RuntimeConfig {
+      shared_data,
+      http_address: "".parse().unwrap(),
+      https_address: "".parse().unwrap(),
+      certificates: HashMap::new(),
+    }
+  }
   fn generate_test_service(host: String, scheme: Scheme) -> MainService {
     MainService {
       scheme,
       client_address: "127.0.0.1:3000".parse().unwrap(),
-      shared_data: Arc::new(ArcSwap::from_pointee(SharedData::new(
-        vec![Arc::new(
+      config: Arc::new(ArcSwap::from_pointee(generate_config(SharedData {
+        backend_pools: vec![Arc::new(
           BackendPoolBuilder::new(
             BackendPoolMatcher::Host(host),
             vec![("127.0.0.1:8084".into(), ArcSwap::from_pointee(Healthiness::Healthy))],
@@ -286,22 +280,22 @@ mod tests {
           )
           .build(),
         )],
-        HashMap::new(),
-        AcmeHandler::new(),
-      ))),
+        acme_handler: AcmeHandler::new(),
+      }))),
     }
   }
 
   #[test]
   fn pool_by_req_no_matching_pool() {
     let service = generate_test_service("whoami.localhost".into(), Scheme::HTTP);
-
+    let config = service.config.load();
+    let shared_data = &config.shared_data;
     let request = Request::builder()
       .header("host", "whoami.de")
       .body(Body::empty())
       .unwrap();
 
-    let pool = pool_by_req(&service.shared_data.load(), &request, &service.scheme);
+    let pool = pool_by_req(shared_data, &request, &service.scheme);
 
     assert_eq!(pool, None);
   }
@@ -309,13 +303,14 @@ mod tests {
   #[test]
   fn pool_by_req_matching_pool() {
     let service = generate_test_service("whoami.localhost".into(), Scheme::HTTP);
-    let shared_data = service.shared_data.load();
+    let config = service.config.load();
+    let shared_data = &config.shared_data;
     let request = Request::builder()
       .header("host", "whoami.localhost")
       .body(Body::empty())
       .unwrap();
 
-    let pool = pool_by_req(&shared_data, &request, &service.scheme);
+    let pool = pool_by_req(shared_data, &request, &service.scheme);
 
     assert_eq!(pool, Some(shared_data.backend_pools[0].clone()));
   }

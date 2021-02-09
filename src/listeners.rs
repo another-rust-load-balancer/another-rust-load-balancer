@@ -1,7 +1,7 @@
 use async_stream::stream;
 use async_trait::async_trait;
 use futures::Stream;
-use log::error;
+use log::{error, info};
 use std::{
   io,
   net::SocketAddr,
@@ -37,22 +37,24 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_, TlsStream<TcpStream>> {
 
 #[async_trait]
 pub trait AcceptorProducer<T> {
-  async fn produce_acceptor(self, address: &str) -> Result<HyperAcceptor<'async_trait, T>, io::Error>;
+  async fn produce_acceptor(self, address: SocketAddr) -> Result<HyperAcceptor<'async_trait, T>, io::Error>;
 }
 
 pub struct Http;
 
 #[async_trait]
 impl AcceptorProducer<TcpStream> for Http {
-  async fn produce_acceptor(self, address: &str) -> Result<HyperAcceptor<'async_trait, TcpStream>, io::Error> {
+  async fn produce_acceptor(self, address: SocketAddr) -> Result<HyperAcceptor<'async_trait, TcpStream>, io::Error> {
     let listener = TcpListener::bind(address).await?;
 
     let incoming_stream = stream! {
       loop {
-          let (socket, _) = listener.accept().await?;
-          yield Ok(socket);
+        let (socket, _) = listener.accept().await?;
+        yield Ok(socket);
       }
     };
+
+    info!("Started listening for HTTP requests on {}", address);
 
     Ok(HyperAcceptor {
       acceptor: Box::pin(incoming_stream),
@@ -68,7 +70,7 @@ pub struct Https {
 impl AcceptorProducer<TlsStream<TcpStream>> for Https {
   async fn produce_acceptor(
     self,
-    address: &str,
+    address: SocketAddr,
   ) -> Result<HyperAcceptor<'async_trait, TlsStream<TcpStream>>, io::Error> {
     let tls_acceptor = TlsAcceptor::from(Arc::new(self.tls_config));
     let listener = TcpListener::bind(address).await?;
@@ -82,6 +84,8 @@ impl AcceptorProducer<TlsStream<TcpStream>> for Https {
           }
       }
     };
+
+    info!("Started listening for HTTPS requests on {}", address);
 
     Ok(HyperAcceptor {
       acceptor: Box::pin(incoming_stream),

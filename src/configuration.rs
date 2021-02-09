@@ -23,22 +23,26 @@ use std::{
   error::Error,
   fmt::Debug,
   fs, io,
+  net::SocketAddr,
   ops::Deref,
   path::Path,
   sync::{mpsc::channel, Arc},
   thread::spawn,
   time::Duration,
 };
-use tokio::sync::watch::{self};
-use tokio_rustls::{rustls::sign::CertifiedKey, webpki::DNSNameRef};
+use tokio::sync::watch;
+use tokio_rustls::{
+  rustls::sign::CertifiedKey,
+  webpki::{DNSName, DNSNameRef},
+};
 use toml::{value::Table, Value};
 
-pub async fn read_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<SharedData>>, io::Error> {
-  let shared_data = read_shared_data(&path).await?;
-  Ok(Arc::new(ArcSwap::from_pointee(shared_data)))
+pub async fn read_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<RuntimeConfig>>, io::Error> {
+  let config = read_runtime_config(&path).await?;
+  Ok(Arc::new(ArcSwap::from_pointee(config)))
 }
 
-pub async fn watch_config<P>(path: P, config: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error>
+pub async fn watch_config<P>(path: P, config: Arc<ArcSwap<RuntimeConfig>>) -> Result<(), io::Error>
 where
   P: AsRef<Path> + Send + 'static,
 {
@@ -47,16 +51,36 @@ where
     receiver.changed().await.map_err(broken_pipe)?;
 
     match receiver.borrow().deref() {
-      DebouncedEvent::Write(path) => match read_shared_data(&path).await {
-        Ok(shared_data) => {
-          config.store(Arc::new(shared_data));
+      DebouncedEvent::Write(path) => match read_runtime_config(&path).await {
+        Ok(new_config) => {
+          let old_config = config.load();
+          warn_about_ineffectual_config_changes(&old_config, &new_config);
+          config.store(Arc::new(new_config));
           info!("Reloaded configuration");
         }
-        Err(e) => warn!("{}", e),
+        Err(e) => {
+          warn!("Could not reload configuration due to: {}", e);
+          warn!("Keeping old configuration")
+        }
       },
       DebouncedEvent::Remove(path) => warn!("{} was deleted", path.display()),
       e => trace!("{:?}", e),
     }
+  }
+}
+
+fn warn_about_ineffectual_config_changes(old: &RuntimeConfig, new: &RuntimeConfig) {
+  if old.http_address != new.http_address {
+    warn!(
+      "A restart is required for the new http_address '{}' to take effect",
+      new.http_address
+    );
+  }
+  if old.https_address != new.https_address {
+    warn!(
+      "A restart is required for the new https_address '{}' to take effect",
+      new.https_address
+    );
   }
 }
 
@@ -84,15 +108,18 @@ fn watch_config_blocking<P: AsRef<Path>>(
   }
 }
 
-async fn read_shared_data<P>(path: P) -> Result<SharedData, io::Error>
+async fn read_runtime_config<P>(path: P) -> Result<RuntimeConfig, io::Error>
 where
   P: AsRef<Path>,
 {
-  let config = Config::read(&path)?;
-  shared_data_from_config(config).await
+  let config = TomlConfig::read(&path)?;
+  runtime_config_from_toml_config(config).await
 }
 
-async fn shared_data_from_config(other: Config) -> Result<SharedData, io::Error> {
+async fn runtime_config_from_toml_config(other: TomlConfig) -> Result<RuntimeConfig, io::Error> {
+  let http_address = other.http_address.parse().map_err(invalid_data)?;
+  let https_address = other.https_address.parse().map_err(invalid_data)?;
+
   let acme_handler = AcmeHandler::new();
   let backend_pools = other.backend_pools.into_iter().map(|it| Arc::new(it.into())).collect();
 
@@ -105,7 +132,15 @@ async fn shared_data_from_config(other: Config) -> Result<SharedData, io::Error>
     certificates.insert(dns_name, certificate);
   }
 
-  Ok(SharedData::new(backend_pools, certificates, acme_handler))
+  Ok(RuntimeConfig {
+    http_address,
+    https_address,
+    shared_data: SharedData {
+      backend_pools,
+      acme_handler,
+    },
+    certificates,
+  })
 }
 
 async fn create_certified_key(
@@ -176,15 +211,37 @@ where
   io::Error::new(io::ErrorKind::Other, error)
 }
 
+pub struct RuntimeConfig {
+  pub http_address: SocketAddr,
+  pub https_address: SocketAddr,
+  pub shared_data: SharedData,
+  pub certificates: HashMap<DNSName, CertifiedKey>,
+}
+
 #[derive(Debug, Deserialize)]
-struct Config {
+struct TomlConfig {
+  #[serde(default = "default_http_address")]
+  http_address: String,
+  #[serde(default = "default_https_address")]
+  https_address: String,
+  #[serde(default)]
   backend_pools: Vec<BackendPoolConfig>,
   #[serde(default)]
   certificates: HashMap<String, CertificateConfig>,
 }
 
-impl Config {
-  fn read<P: AsRef<Path>>(toml_path: P) -> io::Result<Config> {
+// Dual Stack if /proc/sys/net/ipv6/bindv6only has default value 0
+// rf https://man7.org/linux/man-pages/man7/ipv6.7.html
+fn default_http_address() -> String {
+  "[::]:80".to_string()
+}
+
+fn default_https_address() -> String {
+  "[::]:443".to_string()
+}
+
+impl TomlConfig {
+  fn read<P: AsRef<Path>>(toml_path: P) -> io::Result<TomlConfig> {
     let toml_str = fs::read_to_string(&toml_path).map_err(|e| {
       io::Error::new(
         e.kind(),
@@ -195,7 +252,7 @@ impl Config {
         ),
       )
     })?;
-    let config: Config = toml::from_str(&toml_str).map_err(|e| {
+    let config: TomlConfig = toml::from_str(&toml_str).map_err(|e| {
       let e = io::Error::from(e);
       io::Error::new(
         e.kind(),
@@ -211,6 +268,9 @@ impl Config {
   }
 
   fn print_warnings(&self) {
+    if self.backend_pools.is_empty() {
+      warn!("No backend pool found.");
+    }
     for (index, pool) in self.backend_pools.iter().enumerate() {
       if pool.schemes.is_empty() {
         warn!("backend pool at index {} is unreachable, since no schemes are registered. Consider adding `HTTP` or `HTTPS` to the schemes array.", index);

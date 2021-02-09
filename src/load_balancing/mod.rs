@@ -72,10 +72,7 @@ impl<'l> RequestForwarder<'l> {
       backend_uri: self.backend_uri(&request),
       client,
     };
-    match self.forward_request(request, chain, &context).await {
-      Ok(response) => response,
-      Err(response) => response,
-    }
+    self.forward_request(request, chain, &context).await
   }
 
   fn backend_uri(&self, request: &Request<Body>) -> Uri {

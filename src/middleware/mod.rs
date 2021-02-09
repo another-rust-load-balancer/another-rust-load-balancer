@@ -1,4 +1,6 @@
-use crate::{error_response::handle_bad_gateway, http_client::StrategyNotifyHttpConnector, server::Scheme};
+use crate::{
+  error_response::handle_bad_gateway, http_client::StrategyNotifyHttpConnector, server::Scheme, utils::unwrap_result,
+};
 use async_trait::async_trait;
 use gethostname::gethostname;
 use hyper::{header::HeaderValue, Body, Client, Request, Response, Uri};
@@ -18,10 +20,14 @@ pub trait Middleware: Send + Sync + std::fmt::Debug {
     request: Request<Body>,
     chain: &MiddlewareChain,
     context: &Context<'_>,
-  ) -> Result<Response<Body>, Response<Body>> {
-    let request = self.modify_request(request, context).await?;
-    let response = chain.forward_request(request, context).await?;
-    Ok(self.modify_response(response, context))
+  ) -> Response<Body> {
+    match self.modify_request(request, context).await {
+      Ok(request) => {
+        let response = chain.forward_request(request, context).await;
+        self.modify_response(response, context)
+      }
+      Err(response) => response,
+    }
   }
 
   async fn modify_request(
@@ -54,20 +60,18 @@ pub enum MiddlewareChain {
 }
 
 impl MiddlewareChain {
-  pub async fn forward_request(
-    &self,
-    request: Request<Body>,
-    context: &Context<'_>,
-  ) -> Result<Response<Body>, Response<Body>> {
+  pub async fn forward_request(&self, request: Request<Body>, context: &Context<'_>) -> Response<Body> {
     match self {
       MiddlewareChain::Entry { middleware, chain } => middleware.forward_request(request, &chain, &context).await,
       MiddlewareChain::Empty => {
         let backend_request = backend_request(request, context);
-        context
-          .client
-          .request(backend_request)
-          .await
-          .map_err(handle_bad_gateway)
+        unwrap_result(
+          context
+            .client
+            .request(backend_request)
+            .await
+            .map_err(handle_bad_gateway),
+        )
       }
     }
   }

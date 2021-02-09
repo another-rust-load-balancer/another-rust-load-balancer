@@ -5,3 +5,10 @@ pub fn split_once(string: &str, pattern: char) -> Option<(&str, &str)> {
   let second = splitter.next()?;
   Some((first, second))
 }
+
+pub fn unwrap_result<T>(result: Result<T, T>) -> T {
+  match result {
+    Ok(t) => t,
+    Err(t) => t,
+  }
+}

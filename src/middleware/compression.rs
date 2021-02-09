@@ -29,13 +29,14 @@ impl Middleware for Compression {
     request: Request<Body>,
     chain: &MiddlewareChain,
     context: &Context<'_>,
-  ) -> Result<Response<Body>, Response<Body>> {
+  ) -> Response<Body> {
     let encoding = get_preferred_encoding(request.headers());
-    let mut response = chain.forward_request(request, context).await?;
+    let response = chain.forward_request(request, context).await;
     if let Some(encoding) = encoding {
-      response = self.compress_response(response, &encoding)
+      self.compress_response(response, &encoding)
+    } else {
+      response
     }
-    Ok(response)
   }
 }
 

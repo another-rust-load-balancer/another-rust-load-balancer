@@ -16,7 +16,7 @@ pub struct CustomErrorPages {
 
 #[async_trait]
 impl Middleware for CustomErrorPages {
-  fn modify_response(&self, response: Response<Body>, _context: &Context) -> Response<Body> {
+  async fn modify_response(&self, response: Response<Body>, _context: &Context<'_>) -> Response<Body> {
     if self.errors.contains(&(response.status().as_u16())) {
       self.replace_response(response)
     } else {

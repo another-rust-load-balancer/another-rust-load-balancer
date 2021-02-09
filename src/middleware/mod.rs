@@ -24,7 +24,7 @@ pub trait Middleware: Send + Sync + std::fmt::Debug {
     match self.modify_request(request, context).await {
       Ok(request) => {
         let response = chain.forward_request(request, context).await;
-        self.modify_response(response, context)
+        self.modify_response(response, context).await
       }
       Err(response) => response,
     }
@@ -38,7 +38,7 @@ pub trait Middleware: Send + Sync + std::fmt::Debug {
     Ok(request)
   }
 
-  fn modify_response(&self, response: Response<Body>, _context: &Context<'_>) -> Response<Body> {
+  async fn modify_response(&self, response: Response<Body>, _context: &Context<'_>) -> Response<Body> {
     response
   }
 }

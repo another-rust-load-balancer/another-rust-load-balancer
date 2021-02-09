@@ -86,8 +86,9 @@ impl<'l> RequestForwarder<'l> {
   }
 }
 
+#[async_trait]
 impl Middleware for RequestForwarder<'_> {
-  fn modify_response(&self, response: Response<Body>, _context: &middleware::Context) -> Response<Body> {
+  async fn modify_response(&self, response: Response<Body>, _context: &middleware::Context<'_>) -> Response<Body> {
     (self.response_mapper)(response)
   }
 }

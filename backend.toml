@@ -31,6 +31,10 @@ slow_threshold = 202
 interval = 30
 timeout = 400
 
+[backend_pools.middlewares.CustomErrorPages]
+location = "errorpages/"
+errors = [404, 500]
+
 [backend_pools.middlewares.RateLimiter]
 limit = 2
 window_sec = 10
@@ -42,10 +46,6 @@ rdn_identifier = "cn"
 recursive = true
 
 [backend_pools.middlewares.Compression]
-
-[backend_pools.middlewares.CustomErrorPages]
-location = "errorpages/"
-errors = [404, 500]
 
 # ------------------------------------------------------------------------------
 # Pool 3

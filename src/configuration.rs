@@ -1,4 +1,5 @@
 use crate::{
+  acme::AcmeHandler,
   health::{HealthConfig, Healthiness},
   load_balancing::{
     ip_hash::IPHash, least_connection::LeastConnection, random::Random, round_robin::RoundRobin,
@@ -10,6 +11,7 @@ use crate::{
     MiddlewareChain,
   },
   server::{BackendPool, BackendPoolBuilder, Scheme, SharedData},
+  tls::{certified_key_from_acme_certificate, load_certified_key},
 };
 use arc_swap::ArcSwap;
 use log::{info, trace, warn};
@@ -18,41 +20,35 @@ use serde::Deserialize;
 use std::{
   collections::{HashMap, HashSet},
   convert::{TryFrom, TryInto},
+  error::Error,
   fmt::Debug,
   fs, io,
+  ops::Deref,
   path::Path,
-  sync::{
-    mpsc::{channel, RecvError},
-    Arc,
-  },
+  sync::{mpsc::channel, Arc},
   thread::spawn,
   time::Duration,
 };
+use tokio::sync::watch::{self};
+use tokio_rustls::{rustls::sign::CertifiedKey, webpki::DNSNameRef};
 use toml::{value::Table, Value};
 
 pub async fn read_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<SharedData>>, io::Error> {
-  let config = Config::read(&path)?;
-  Ok(Arc::new(ArcSwap::from_pointee(config.into())))
+  let shared_data = read_shared_data(&path).await?;
+  Ok(Arc::new(ArcSwap::from_pointee(shared_data)))
 }
 
-pub fn start_config_watcher<P>(path: P, config: Arc<ArcSwap<SharedData>>)
+pub async fn watch_config<P>(path: P, config: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error>
 where
   P: AsRef<Path> + Send + 'static,
 {
-  spawn(move || update_config_on_file_change(path, config));
-}
-
-fn update_config_on_file_change<P: AsRef<Path>>(path: P, config: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
-  let (tx, rx) = channel();
-  let mut watcher = watcher(tx, Duration::from_secs(1)).map_err(map_notify_error)?;
-  watcher
-    .watch(path, RecursiveMode::NonRecursive)
-    .map_err(map_notify_error)?;
-
+  let mut receiver = start_config_watcher(path);
   loop {
-    match rx.recv().map_err(map_recv_error)? {
-      DebouncedEvent::Write(path) => match Config::read(&path) {
-        Ok(new_config) => config.store(Arc::new(new_config.into())),
+    receiver.changed().await.map_err(broken_pipe)?;
+
+    match receiver.borrow().deref() {
+      DebouncedEvent::Write(path) => match read_shared_data(&path).await {
+        Ok(shared_data) => config.store(Arc::new(shared_data)),
         Err(e) => warn!("{}", e),
       },
       DebouncedEvent::Remove(path) => warn!("{} was deleted", path.display()),
@@ -61,17 +57,120 @@ fn update_config_on_file_change<P: AsRef<Path>>(path: P, config: Arc<ArcSwap<Sha
   }
 }
 
-fn map_notify_error(error: notify::Error) -> io::Error {
-  match error {
-    notify::Error::Generic(e) => io::Error::new(io::ErrorKind::Other, e),
-    notify::Error::Io(e) => e,
-    notify::Error::PathNotFound => io::Error::new(io::ErrorKind::NotFound, error),
-    notify::Error::WatchNotFound => io::Error::new(io::ErrorKind::NotFound, error),
+fn start_config_watcher<P>(path: P) -> watch::Receiver<DebouncedEvent>
+where
+  P: AsRef<Path> + Send + 'static,
+{
+  let (sender, receiver) = watch::channel(DebouncedEvent::Write(path.as_ref().into()));
+  spawn(move || watch_config_blocking(path, sender));
+  receiver
+}
+
+fn watch_config_blocking<P: AsRef<Path>>(
+  path: P,
+  async_sender: watch::Sender<DebouncedEvent>,
+) -> Result<(), io::Error> {
+  let (sender, receiver) = channel();
+  let mut watcher = watcher(sender, Duration::from_secs(1)).map_err(map_notify_error)?;
+  watcher
+    .watch(path, RecursiveMode::NonRecursive)
+    .map_err(map_notify_error)?;
+  loop {
+    let evt = receiver.recv().map_err(broken_pipe)?;
+    async_sender.send(evt).map_err(broken_pipe)?;
   }
 }
 
-fn map_recv_error(error: RecvError) -> io::Error {
+async fn read_shared_data<P>(path: P) -> Result<SharedData, io::Error>
+where
+  P: AsRef<Path>,
+{
+  let config = Config::read(&path)?;
+  shared_data_from_config(config).await
+}
+
+async fn shared_data_from_config(other: Config) -> Result<SharedData, io::Error> {
+  let acme_handler = AcmeHandler::new();
+  let backend_pools = other.backend_pools.into_iter().map(|it| Arc::new(it.into())).collect();
+
+  let mut certificates = HashMap::new();
+  for (sni_name, certificate_config) in other.certificates {
+    let dns_name = DNSNameRef::try_from_ascii_str(&sni_name)
+      .map_err(invalid_data)?
+      .to_owned();
+    let certificate = create_certified_key(certificate_config, dns_name.as_ref(), &acme_handler).await?;
+    certificates.insert(dns_name, certificate);
+  }
+
+  Ok(SharedData::new(backend_pools, certificates, acme_handler))
+}
+
+async fn create_certified_key(
+  config: CertificateConfig,
+  sni_name: DNSNameRef<'_>,
+  acme_handler: &AcmeHandler,
+) -> Result<CertifiedKey, io::Error> {
+  let certified_key = match config {
+    CertificateConfig::Local {
+      certificate_path,
+      private_key_path,
+    } => load_certified_key(certificate_path, private_key_path)?,
+    CertificateConfig::ACME {
+      staging,
+      email,
+      alt_names,
+      persist_dir,
+    } => {
+      // TODO refresh certificates once they expire?
+      let certificate = acme_handler
+        .initiate_challenge(staging, &persist_dir, &email, sni_name.into(), &alt_names)
+        .await
+        .map_err(other)?;
+
+      certified_key_from_acme_certificate(certificate)?
+    }
+  };
+  certified_key
+    .cross_check_end_entity_cert(Some(sni_name))
+    .map_err(invalid_data)?;
+  Ok(certified_key)
+}
+
+fn map_notify_error(error: notify::Error) -> io::Error {
+  match error {
+    notify::Error::Generic(e) => other(e),
+    notify::Error::Io(e) => e,
+    notify::Error::PathNotFound => not_found(error),
+    notify::Error::WatchNotFound => not_found(error),
+  }
+}
+
+fn broken_pipe<E>(error: E) -> io::Error
+where
+  E: Into<Box<dyn Error + Send + Sync>>,
+{
   io::Error::new(io::ErrorKind::BrokenPipe, error)
+}
+
+fn invalid_data<E>(error: E) -> io::Error
+where
+  E: Into<Box<dyn Error + Send + Sync>>,
+{
+  io::Error::new(io::ErrorKind::InvalidData, error)
+}
+
+fn not_found<E>(error: E) -> io::Error
+where
+  E: Into<Box<dyn Error + Send + Sync>>,
+{
+  io::Error::new(io::ErrorKind::NotFound, error)
+}
+
+fn other<E>(error: E) -> io::Error
+where
+  E: Into<Box<dyn Error + Send + Sync>>,
+{
+  io::Error::new(io::ErrorKind::Other, error)
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,14 +221,6 @@ impl Config {
         );
       }
     }
-  }
-}
-
-impl From<Config> for SharedData {
-  fn from(other: Config) -> Self {
-    let certificates = other.certificates;
-    let backend_pools = other.backend_pools.into_iter().map(|b| Arc::new(b.into())).collect();
-    SharedData::new(backend_pools, certificates)
   }
 }
 

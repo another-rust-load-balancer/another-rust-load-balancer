@@ -1,7 +1,6 @@
 use crate::{
   acme::AcmeHandler,
   backend_pool_matcher::BackendPoolMatcher,
-  configuration::CertificateConfig,
   error_response::{bad_gateway, not_found},
   health::{HealthConfig, Healthiness},
   http_client::StrategyNotifyHttpConnector,
@@ -31,6 +30,7 @@ use std::{
   time::Duration,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio_rustls::{rustls::sign::CertifiedKey, webpki::DNSName};
 
 pub async fn create<'a, I, IE, IO>(
   acceptor: I,
@@ -137,16 +137,20 @@ fn pool_by_req(shared_data: &SharedData, request: &Request<Body>, scheme: &Schem
 
 pub struct SharedData {
   pub backend_pools: Vec<Arc<BackendPool>>,
-  pub certificates: HashMap<String, CertificateConfig>,
+  pub certificates: HashMap<DNSName, CertifiedKey>,
   pub acme_handler: AcmeHandler,
 }
 
 impl SharedData {
-  pub fn new(backend_pools: Vec<Arc<BackendPool>>, certificates: HashMap<String, CertificateConfig>) -> SharedData {
+  pub fn new(
+    backend_pools: Vec<Arc<BackendPool>>,
+    certificates: HashMap<DNSName, CertifiedKey>,
+    acme_handler: AcmeHandler,
+  ) -> SharedData {
     SharedData {
       backend_pools,
       certificates,
-      acme_handler: AcmeHandler::new(),
+      acme_handler,
     }
   }
 }
@@ -283,6 +287,7 @@ mod tests {
           .build(),
         )],
         HashMap::new(),
+        AcmeHandler::new(),
       ))),
     }
   }

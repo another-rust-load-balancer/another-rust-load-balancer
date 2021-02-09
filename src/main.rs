@@ -1,12 +1,12 @@
-use crate::configuration::CertificateConfig::{Local, ACME};
-use arc_swap::ArcSwap;
+use arc_swap::{access::Map, ArcSwap};
 use clap::{App, Arg};
-use configuration::{read_config, start_config_watcher};
+use configuration::{read_config, watch_config};
 use listeners::{AcceptorProducer, Https};
 use server::{Scheme, SharedData};
 use std::{io, sync::Arc};
+use tls::ReconfigurableCertificateResolver;
 use tokio::try_join;
-use tokio_rustls::rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
+use tokio_rustls::rustls::{NoClientAuth, ServerConfig};
 
 mod acme;
 mod backend_pool_matcher;
@@ -47,8 +47,8 @@ pub async fn main() -> Result<(), io::Error> {
   logging::initialize();
 
   let config = read_config(&backend).await?;
-  start_config_watcher(backend, config.clone());
   try_join!(
+    watch_config(backend, config.clone()),
     watch_health(config.clone()),
     listen_for_http_request(config.clone()),
     listen_for_https_request(config.clone())
@@ -70,35 +70,10 @@ async fn listen_for_http_request(shared_data: Arc<ArcSwap<SharedData>>) -> Resul
 
 async fn listen_for_https_request(shared_data: Arc<ArcSwap<SharedData>>) -> Result<(), io::Error> {
   let mut tls_config = ServerConfig::new(NoClientAuth::new());
-  let mut cert_resolver = ResolvesServerCertUsingSNI::new();
-
-  let data = shared_data.load();
-  for (sni_name, certificate) in &data.certificates {
-    match certificate {
-      Local {
-        certificate_path,
-        private_key_path,
-      } => {
-        tls::add_custom_certificate(&mut cert_resolver, &sni_name, certificate_path, private_key_path)?;
-      }
-      ACME {
-        staging,
-        email,
-        alt_names,
-        persist_dir,
-      } => {
-        let cert = data
-          .acme_handler
-          .initiate_challenge(*staging, persist_dir, email, sni_name, alt_names)
-          .await
-          .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        tls::add_acme_certificate(&mut cert_resolver, &sni_name, cert)?;
-      }
-    }
-  }
+  let certificates = Map::new(shared_data.clone(), |it: &SharedData| &it.certificates);
+  let cert_resolver = ReconfigurableCertificateResolver::new(certificates);
   tls_config.cert_resolver = Arc::new(cert_resolver);
 
-  // TODO refresh certificates once they expire?
   let https = Https { tls_config };
   let acceptor = https.produce_acceptor(LOCAL_HTTPS_ADDRESS).await?;
 

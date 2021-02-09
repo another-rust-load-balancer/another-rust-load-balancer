@@ -36,7 +36,7 @@ timeout = 400
 
 [backend_pools.middlewares.CustomErrorPages]
 location = "errorpages/"
-errors = [404, 500]
+errors = [404, 429, 500]
 
 
 [backend_pools.middlewares.RateLimiter]

@@ -57,13 +57,6 @@ async fn check_health_once(shared_data: Arc<ArcSwap<SharedData>>) {
   let data = shared_data.load();
 
   for pool in &data.backend_pools {
-    println!(
-      "interval: {}, slow_threshold: {}, timeout: {}, path: {}",
-      pool.health_config.interval,
-      pool.health_config.slow_threshold,
-      pool.health_config.timeout,
-      pool.health_config.path
-    );
     for (server_address, healthiness) in &pool.addresses {
       let uri = uri::Uri::builder()
         .scheme("http")

@@ -116,7 +116,7 @@ impl Service<Request<Body>> for MainService {
             };
             let backend = pool.strategy.select_backend(&request, &context);
             let result = backend
-              .forward_request_through_middleware(request, &pool.chain, &client_scheme, &client_address, &pool.client)
+              .forward_request_to_backend(request, &pool.chain, &client_scheme, &client_address, &pool.client)
               .await;
             Ok(result)
           }

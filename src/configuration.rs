@@ -132,12 +132,16 @@ async fn runtime_config_from_toml_config(other: TomlConfig) -> Result<RuntimeCon
     certificates.insert(dns_name, certificate);
   }
 
+  let health_interval_config: HealthIntervalConfig = other.health_interval;
+  let health_interval: i64 = health_interval_config.check_every;
+
   Ok(RuntimeConfig {
     http_address,
     https_address,
     shared_data: SharedData {
       backend_pools,
       acme_handler,
+      health_interval,
     },
     certificates,
   })
@@ -216,6 +220,10 @@ pub struct RuntimeConfig {
   pub shared_data: SharedData,
   pub certificates: HashMap<DNSName, CertifiedKey>,
 }
+#[derive(Debug, Deserialize, Default)]
+pub struct HealthIntervalConfig {
+  pub check_every: i64,
+}
 
 #[derive(Debug, Deserialize)]
 struct TomlConfig {
@@ -227,6 +235,8 @@ struct TomlConfig {
   backend_pools: Vec<BackendPoolConfig>,
   #[serde(default)]
   certificates: HashMap<String, CertificateConfig>,
+  #[serde(default)]
+  health_interval: HealthIntervalConfig,
 }
 
 // Dual Stack if /proc/sys/net/ipv6/bindv6only has default value 0

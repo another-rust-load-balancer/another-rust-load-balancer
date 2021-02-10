@@ -14,7 +14,6 @@ strategy = { StickyCookie = { cookie_name = "lb_cookie", http_only = false, secu
 [backend_pools.health_config]
 path = "/"
 slow_threshold = 201
-interval = 20
 timeout = 300
 
 [backend_pools.middlewares.CustomErrorPages]
@@ -39,7 +38,6 @@ strategy = { Random = {} }
 [backend_pools.health_config]
 path = "/"
 slow_threshold = 202
-interval = 30
 timeout = 400
 
 [backend_pools.middlewares.Compression]
@@ -59,7 +57,6 @@ strategy = { IPHash = {} }
 [backend_pools.health_config]
 path = "/"
 slow_threshold = 203
-interval = 40
 timeout = 500
 
 [backend_pools.middlewares.HttpsRedirector]
@@ -84,7 +81,6 @@ strategy = { Random = {} }
 [backend_pools.health_config]
 path = "/"
 slow_threshold = 204
-interval = 50
 timeout = 600
 
 [backend_pools.middlewares.Compression]
@@ -96,3 +92,6 @@ limit = 256
 [certificates]
 "www.arlb.de" = { Local = { certificate_path = "x509/www.arlb.de.cer", private_key_path = "x509/www.arlb.de.key" } }
 "https.localhost" = { Local = { certificate_path = "x509/https.localhost.cer", private_key_path = "x509/https.localhost.key" } }
+
+[health_interval]
+check_every = 10

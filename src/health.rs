@@ -1,4 +1,4 @@
-use crate::server::BackendPool;
+use crate::server::SharedData;
 use arc_swap::{access::Access, ArcSwap};
 use futures::future::join_all;
 use hyper::{
@@ -9,18 +9,13 @@ use hyper::{
 use hyper_timeout::TimeoutConnector;
 use log::info;
 use serde::Deserialize;
-use std::time::Duration;
 use std::time::SystemTime;
+use std::{cmp, time::Duration};
 use std::{convert::TryFrom, ops::Deref};
 use std::{fmt, sync::Arc};
-
-// Amount of time in seconds to pass until the next health check is started
-const CHECK_INTERVAL: i64 = 20;
-
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct HealthConfig {
   pub slow_threshold: i64,
-  pub interval: i64,
   pub timeout: u64,
   pub path: String,
 }
@@ -43,20 +38,37 @@ impl fmt::Display for Healthiness {
   }
 }
 
-pub async fn watch_health<A, G>(backend_pools: A)
+pub async fn watch_health<A, G>(shared_data: A)
 where
-  A: Access<Vec<Arc<BackendPool>>, Guard = G> + Send + Sync + 'static,
-  G: Deref<Target = Vec<Arc<BackendPool>>> + Send + Sync,
+  A: Access<SharedData, Guard = G> + Send + Sync + 'static,
+  G: Deref<Target = SharedData> + Send + Sync,
 {
-  let backend_pools = Arc::new(backend_pools);
-  let mut interval_timer = tokio::time::interval(chrono::Duration::seconds(CHECK_INTERVAL).to_std().unwrap());
+  let mut current_interval = shared_data.load().health_interval;
+  let mut interval_timer = tokio::time::interval(
+    chrono::Duration::seconds(cmp::max(1, current_interval))
+      .to_std()
+      .unwrap(),
+  );
 
   loop {
+    let loaded_pools = shared_data.load().backend_pools.clone();
+    let new_health_interval = shared_data.load().health_interval;
+    if current_interval != new_health_interval {
+      info!(
+        "Health check interval change from {}s to {}s",
+        current_interval, new_health_interval
+      );
+      current_interval = new_health_interval;
+      interval_timer = tokio::time::interval(
+        chrono::Duration::seconds(cmp::max(1, new_health_interval))
+          .to_std()
+          .unwrap(),
+      );
+    };
     interval_timer.tick().await;
-    let loaded_backend_pools = backend_pools.load();
     let mut checks = Vec::new();
 
-    for pool in loaded_backend_pools.deref() {
+    for pool in loaded_pools.iter() {
       for (server_address, healthiness) in &pool.addresses {
         let future = check_server_health_once(server_address.clone(), healthiness, &pool.health_config);
         checks.push(future);

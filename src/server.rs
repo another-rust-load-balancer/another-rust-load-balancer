@@ -139,6 +139,7 @@ fn pool_by_req(shared_data: &SharedData, request: &Request<Body>, scheme: &Schem
 pub struct SharedData {
   pub backend_pools: Vec<Arc<BackendPool>>,
   pub acme_handler: AcmeHandler,
+  pub health_interval: i64,
 }
 
 #[derive(Debug)]
@@ -270,7 +271,6 @@ mod tests {
             vec![("127.0.0.1:8084".into(), ArcSwap::from_pointee(Healthiness::Healthy))],
             HealthConfig {
               slow_threshold: 200,
-              interval: 60,
               timeout: 500,
               path: String::from("/"),
             },
@@ -281,6 +281,7 @@ mod tests {
           .build(),
         )],
         acme_handler: AcmeHandler::new(),
+        health_interval: 60,
       }))),
     }
   }

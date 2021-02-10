@@ -89,6 +89,12 @@ pub struct Context<'l> {
   pub client: &'l Client<StrategyNotifyHttpConnector, Body>,
 }
 
+/// A singly linked list of [`Middleware`]s.
+///
+/// This list is used to call all middlewares of a
+/// [`BackendPool`](crate::server::BackendPool) in order and forward the request
+/// to the backend server once the chain is empty. This is implemented in
+/// [`forward_request`](MiddlewareChain::forward_request).
 #[derive(Debug)]
 pub enum MiddlewareChain {
   Empty,
@@ -99,6 +105,14 @@ pub enum MiddlewareChain {
 }
 
 impl MiddlewareChain {
+  /// If this chain is not empty this function calls
+  /// [`forward_request`](Middleware::forward_request) on the first middleware,
+  /// passing it the tail of this chain as an argument to be called recursively.
+  ///
+  /// Once this chain is empty this function does the final request
+  /// transformation, setting all appropriate forwarding headers (like
+  /// `x-forwarded-for`) and sends it to the backend server, returning the
+  /// response.
   pub async fn forward_request(&self, request: Request<Body>, context: &Context<'_>) -> Response<Body> {
     match self {
       MiddlewareChain::Entry { middleware, chain } => middleware.forward_request(request, &chain, &context).await,

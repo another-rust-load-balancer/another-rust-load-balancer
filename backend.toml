@@ -70,28 +70,8 @@ recursive = false
 [backend_pools.middlewares.Compression]
 
 # ------------------------------------------------------------------------------
-# Pool 4
-# ------------------------------------------------------------------------------
-[[backend_pools]]
-matcher = "Host('www.arlb.de')"
-addresses = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
-schemes = ["HTTP", "HTTPS"]
-strategy = { Random = {} }
-
-[backend_pools.health_config]
-path = "/"
-slow_threshold = 204
-timeout = 500
-
-[backend_pools.middlewares.Compression]
-
-[backend_pools.middlewares.MaxBodySize]
-limit = 256
-
-# ------------------------------------------------------------------------------
 [certificates]
 "https.localhost" = { Local = { certificate_path = "x509/https.localhost.cer", private_key_path = "x509/https.localhost.key" } }
-"www.arlb.de" = { Local = { certificate_path = "x509/www.arlb.de.cer", private_key_path = "x509/www.arlb.de.key" } }
 
 [health_interval]
 check_every = 10

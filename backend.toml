@@ -17,6 +17,14 @@ slow_threshold = 201
 interval = 20
 timeout = 300
 
+[backend_pools.middlewares.CustomErrorPages]
+location = "errorpages/"
+errors = [404, 429, 500]
+
+[backend_pools.middlewares.RateLimiter]
+limit = 5
+window_sec = 10
+
 [backend_pools.middlewares.Compression]
 
 # ------------------------------------------------------------------------------
@@ -34,22 +42,10 @@ slow_threshold = 202
 interval = 30
 timeout = 400
 
-[backend_pools.middlewares.CustomErrorPages]
-location = "errorpages/"
-errors = [404, 429, 500]
-
-
-[backend_pools.middlewares.RateLimiter]
-limit = 2
-window_sec = 10
-
-[backend_pools.middlewares.Authentication]
-ldap_address = "ldap://172.28.1.7:1389"
-user_directory = "dc=example,dc=org"
-rdn_identifier = "cn"
-recursive = true
-
 [backend_pools.middlewares.Compression]
+
+[backend_pools.middlewares.MaxBodySize]
+limit = 256
 
 # ------------------------------------------------------------------------------
 # Pool 3

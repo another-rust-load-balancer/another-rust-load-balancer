@@ -4,6 +4,8 @@ The configuration is supplied via a local TOML file
 
 ```toml
 # backend.toml
+http_address = "[::]:80"
+https_address = "[::]:443"
 
 [[backend_pools]]
 matcher = "Host('whoami.localhost')"
@@ -29,6 +31,7 @@ window_sec = 1
 
 It currently contains two top level entries:
 
+- A listen address for `http_address` and `https_address`. Can contain IPv4 and IPv6 addresses.
 - A list of `backend_pools`
 - A dictionary/map of `certificates`
 

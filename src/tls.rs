@@ -18,7 +18,9 @@ use tokio_rustls::{
 pub fn certified_key_from_acme_certificate(certificate: acme_lib::Certificate) -> Result<CertifiedKey, io::Error> {
   let certificates = vec![Certificate(certificate.certificate_der())];
   let private_key = PrivateKey(certificate.private_key_der());
-  new_certified_key(certificates, &private_key)
+  let private_key =
+    RSASigningKey::new(&private_key).map_err(|_| io::Error::new(InvalidData, format!("Invalid RSA key")))?;
+  Ok(CertifiedKey::new(certificates, Arc::new(Box::new(private_key))))
 }
 
 pub fn load_certified_key<P1, P2>(certificate_path: P1, private_key_path: P2) -> Result<CertifiedKey, io::Error>
@@ -27,12 +29,13 @@ where
   P2: AsRef<Path>,
 {
   let certificates = load_certs(certificate_path)?;
-  let private_key = load_key(private_key_path)?;
-  new_certified_key(certificates, &private_key)
-}
-
-fn new_certified_key(certificates: Vec<Certificate>, private_key: &PrivateKey) -> Result<CertifiedKey, io::Error> {
-  let private_key = RSASigningKey::new(private_key).map_err(|_| io::Error::new(InvalidData, "invalid rsa key"))?;
+  let private_key = load_key(&private_key_path)?;
+  let private_key = RSASigningKey::new(&private_key).map_err(|_| {
+    io::Error::new(
+      InvalidData,
+      format!("Invalid RSA key in '{}'", private_key_path.as_ref().display()),
+    )
+  })?;
   Ok(CertifiedKey::new(certificates, Arc::new(Box::new(private_key))))
 }
 
@@ -40,9 +43,19 @@ fn load_certs<P>(path: P) -> io::Result<Vec<Certificate>>
 where
   P: AsRef<Path>,
 {
-  let file = File::open(path)?;
+  let file = File::open(&path).map_err(|e| {
+    io::Error::new(
+      e.kind(),
+      format!("Could not open '{}' due to: {}", path.as_ref().display(), e),
+    )
+  })?;
   let mut reader = BufReader::new(file);
-  certs(&mut reader).map_err(|_| io::Error::new(InvalidData, "invalid cert"))
+  certs(&mut reader).map_err(|_| {
+    io::Error::new(
+      InvalidData,
+      format!("Invalid certificate in '{}'", path.as_ref().display()),
+    )
+  })
 }
 
 fn load_key<P>(path: P) -> io::Result<PrivateKey>
@@ -57,9 +70,10 @@ fn load_keys<P>(path: P) -> io::Result<Vec<PrivateKey>>
 where
   P: AsRef<Path>,
 {
-  let file = File::open(path)?;
+  let file = File::open(&path)?;
   let mut reader = BufReader::new(file);
-  rsa_private_keys(&mut reader).map_err(|_| io::Error::new(InvalidData, "invalid key"))
+  rsa_private_keys(&mut reader)
+    .map_err(|_| io::Error::new(InvalidData, format!("Invalid RSA key in '{}'", path.as_ref().display())))
 }
 
 pub struct ReconfigurableCertificateResolver<A>

@@ -38,7 +38,9 @@ use tokio_rustls::{
 use toml::{value::Table, Value};
 
 pub async fn read_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<RuntimeConfig>>, io::Error> {
-  let config = read_runtime_config(&path).await?;
+  let config = read_runtime_config(&path)
+    .await
+    .map_err(|e| io::Error::new(e.kind(), format!("Could not load configuration due to: {}", e)))?;
   Ok(Arc::new(ArcSwap::from_pointee(config)))
 }
 
@@ -63,7 +65,7 @@ where
           warn!("Keeping old configuration")
         }
       },
-      DebouncedEvent::Remove(path) => warn!("{} was deleted", path.display()),
+      DebouncedEvent::Remove(path) => warn!("'{}' was deleted", path.display()),
       e => trace!("{:?}", e),
     }
   }
@@ -168,7 +170,16 @@ async fn create_certified_key(
         .await
         .map_err(other)?;
 
-      certified_key_from_acme_certificate(certificate)?
+      certified_key_from_acme_certificate(certificate).map_err(|e| {
+        io::Error::new(
+          e.kind(),
+          format!(
+            "Could not load ACME certificate for '{}' due to: {}",
+            Into::<&str>::into(sni_name),
+            e
+          ),
+        )
+      })?
     }
   };
   certified_key

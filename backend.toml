@@ -13,8 +13,8 @@ strategy = { StickyCookie = { cookie_name = "lb_cookie", http_only = false, secu
 
 [backend_pools.health_config]
 path = "/"
-slow_threshold = 201
-timeout = 500
+slow_threshold = 150
+timeout = 300
 
 [backend_pools.middlewares.CustomErrorPages]
 location = "errorpages/"
@@ -35,11 +35,6 @@ addresses = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
 schemes = ["HTTP"]
 strategy = { Random = {} }
 
-[backend_pools.health_config]
-path = "/"
-slow_threshold = 202
-timeout = 500
-
 [backend_pools.middlewares.Compression]
 
 [backend_pools.middlewares.MaxBodySize]
@@ -53,11 +48,6 @@ matcher = "Host('https.localhost')"
 addresses = ["172.28.1.1:80", "172.28.1.2:80", "172.28.1.3:80"]
 schemes = ["HTTP", "HTTPS"]
 strategy = { IPHash = {} }
-
-[backend_pools.health_config]
-path = "/"
-slow_threshold = 203
-timeout = 500
 
 [backend_pools.middlewares.HttpsRedirector]
 
@@ -74,4 +64,4 @@ recursive = false
 "https.localhost" = { Local = { certificate_path = "x509/https.localhost.cer", private_key_path = "x509/https.localhost.key" } }
 
 [health_interval]
-check_every = 10
+check_every = 5

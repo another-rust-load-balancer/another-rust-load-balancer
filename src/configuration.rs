@@ -135,7 +135,7 @@ async fn runtime_config_from_toml_config(other: TomlConfig) -> Result<RuntimeCon
   }
 
   let health_interval_config: HealthIntervalConfig = other.health_interval;
-  let health_interval = Duration::from_secs(health_interval_config.check_every);
+  let health_interval = Duration::from_secs(health_interval_config.check_every.unwrap_or(DEFAULT_HEALTH_INTERVAL));
 
   Ok(RuntimeConfig {
     http_address,
@@ -309,7 +309,7 @@ struct BackendPoolConfig {
   addresses: Vec<String>,
   schemes: HashSet<Scheme>,
   client: Option<ClientConfig>,
-  health_config: HealthConfig,
+  health_config: Option<HealthTomlConfig>,
   strategy: LoadBalancingStrategyConfig,
   #[serde(default)]
   middlewares: Table,
@@ -324,10 +324,25 @@ impl From<BackendPoolConfig> for BackendPool {
       .into_iter()
       .map(|address| (address, ArcSwap::from_pointee(Healthiness::Healthy)))
       .collect();
-    let health_config = other.health_config;
+    let health_toml_config = other.health_config;
     let strategy = other.strategy.into();
     let chain = other.middlewares.into();
     let schemes = other.schemes;
+
+    let health_toml_config = health_toml_config.unwrap_or(HealthTomlConfig {
+      slow_threshold: None,
+      timeout: None,
+      path: None,
+    });
+    let health_config = HealthConfig {
+      slow_threshold: health_toml_config
+        .slow_threshold
+        .unwrap_or(DEFAULT_HEALTH_SLOW_THRESHOLD),
+      timeout: health_toml_config.timeout.unwrap_or(DEFAULT_HEALTH_TIMEOUT),
+      path: health_toml_config
+        .path
+        .unwrap_or_else(|| DEFAULT_HEALTH_PATH.to_string()),
+    };
 
     let mut builder = BackendPoolBuilder::new(matcher, addresses, health_config, strategy, chain, schemes);
     if let Some(client) = other.client {
@@ -471,5 +486,17 @@ pub enum CertificateConfig {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct HealthIntervalConfig {
-  pub check_every: u64,
+  pub check_every: Option<u64>,
 }
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub struct HealthTomlConfig {
+  pub slow_threshold: Option<i64>,
+  pub timeout: Option<u64>,
+  pub path: Option<String>,
+}
+
+const DEFAULT_HEALTH_INTERVAL: u64 = 10;
+const DEFAULT_HEALTH_PATH: &str = "/";
+const DEFAULT_HEALTH_SLOW_THRESHOLD: i64 = 300;
+const DEFAULT_HEALTH_TIMEOUT: u64 = 500;

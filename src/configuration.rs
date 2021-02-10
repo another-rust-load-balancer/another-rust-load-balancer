@@ -135,7 +135,7 @@ async fn runtime_config_from_toml_config(other: TomlConfig) -> Result<RuntimeCon
   }
 
   let health_interval_config: HealthIntervalConfig = other.health_interval;
-  let health_interval = Duration::from_secs(health_interval_config.check_every.unwrap());
+  let health_interval = Duration::from_secs(health_interval_config.check_every);
 
   Ok(RuntimeConfig {
     http_address,
@@ -258,9 +258,7 @@ fn default_https_address() -> String {
 }
 
 fn default_health_interval_config() -> HealthIntervalConfig {
-  HealthIntervalConfig {
-    check_every: Some(DEFAULT_HEALTH_INTERVAL),
-  }
+  HealthIntervalConfig { check_every: 10 }
 }
 
 impl TomlConfig {
@@ -316,18 +314,18 @@ struct BackendPoolConfig {
   schemes: HashSet<Scheme>,
   client: Option<ClientConfig>,
   #[serde(default = "default_health_config")]
-  health_config: Option<HealthTomlConfig>,
+  health_config: HealthTomlConfig,
   strategy: LoadBalancingStrategyConfig,
   #[serde(default)]
   middlewares: Table,
 }
 
-fn default_health_config() -> Option<HealthTomlConfig> {
-  Some(HealthTomlConfig {
-    slow_threshold: Some(DEFAULT_HEALTH_SLOW_THRESHOLD),
-    timeout: Some(DEFAULT_HEALTH_TIMEOUT),
-    path: Some(DEFAULT_HEALTH_PATH.to_string()),
-  })
+fn default_health_config() -> HealthTomlConfig {
+  HealthTomlConfig {
+    slow_threshold: default_slow_threshold(),
+    timeout: default_timeout(),
+    path: default_path(),
+  }
 }
 
 impl From<BackendPoolConfig> for BackendPool {
@@ -344,15 +342,10 @@ impl From<BackendPoolConfig> for BackendPool {
     let chain = other.middlewares.into();
     let schemes = other.schemes;
 
-    let health_toml_config = health_toml_config.unwrap();
     let health_config = HealthConfig {
-      slow_threshold: health_toml_config
-        .slow_threshold
-        .unwrap_or(DEFAULT_HEALTH_SLOW_THRESHOLD),
-      timeout: health_toml_config.timeout.unwrap_or(DEFAULT_HEALTH_TIMEOUT),
-      path: health_toml_config
-        .path
-        .unwrap_or_else(|| DEFAULT_HEALTH_PATH.to_string()),
+      slow_threshold: health_toml_config.slow_threshold,
+      timeout: health_toml_config.timeout,
+      path: health_toml_config.path,
     };
 
     let mut builder = BackendPoolBuilder::new(matcher, addresses, health_config, strategy, chain, schemes);
@@ -497,17 +490,27 @@ pub enum CertificateConfig {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct HealthIntervalConfig {
-  pub check_every: Option<u64>,
+  pub check_every: u64,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Default)]
 pub struct HealthTomlConfig {
-  pub slow_threshold: Option<i64>,
-  pub timeout: Option<u64>,
-  pub path: Option<String>,
+  #[serde(default = "default_slow_threshold")]
+  pub slow_threshold: i64,
+  #[serde(default = "default_timeout")]
+  pub timeout: u64,
+  #[serde(default = "default_path")]
+  pub path: String,
 }
 
-const DEFAULT_HEALTH_INTERVAL: u64 = 10;
-const DEFAULT_HEALTH_PATH: &str = "/";
-const DEFAULT_HEALTH_SLOW_THRESHOLD: i64 = 300;
-const DEFAULT_HEALTH_TIMEOUT: u64 = 500;
+fn default_slow_threshold() -> i64 {
+  300
+}
+
+fn default_timeout() -> u64 {
+  500
+}
+
+fn default_path() -> String {
+  "/".to_string()
+}

@@ -141,6 +141,7 @@ mod tests {
   async fn test_user_authentication_basic_authorized() {
     // given:
     let mut headers = HeaderMap::new();
+    //authorized user tyrion:foo
     headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmZvbw==".parse().unwrap());
     let ldap_address = "ldap://172.28.1.7:1389".to_string();
     let user_directory = "ou=users,dc=example,dc=org".to_string();

@@ -21,6 +21,16 @@ sudo setcap 'cap_net_bind_service=+ep' target/debug/another-rust-load-balancer #
 target/debug/another-rust-load-balancer --version
 ```
 
+If you want to cross compile the project, we recommend using `cross`:
+
+```sh
+cargo install --version 0.1.16 cross # 0.1.16 still contains openssl
+
+rustup target add x86_64-unknown-linux-musl
+cross build --target x86_64-unknown-linux-musl --release
+target/x86_64-unknown-linux-musl/release/another-rust-load-balancer --version
+```
+
 After that, you may want to add the binary to your `PATH`.
 
 ### Grab the binary

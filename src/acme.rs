@@ -85,8 +85,7 @@ impl AcmeHandler {
     staging: bool,
     persist_dir: &str,
     email: &str,
-    primary_name: &str,
-    alt_names: &[String],
+    primary_name: &str
   ) -> Result<Certificate, Error> {
     std::fs::create_dir_all(persist_dir).map_err(|e| Error::Other(e.to_string()))?;
     let persist = FilePersist::new(persist_dir);
@@ -105,8 +104,7 @@ impl AcmeHandler {
       }
     }
 
-    let alt_names_ref = alt_names.iter().map(String::as_str).collect::<Vec<_>>();
-    let ord_new = acc.new_order(primary_name, &alt_names_ref)?;
+    let ord_new = acc.new_order(primary_name, &[])?;
     let (cs, mut cr) = unbounded_channel();
     AcmeHandler::start_challenge_handler(ord_new, cs);
 

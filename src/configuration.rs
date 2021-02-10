@@ -156,12 +156,11 @@ async fn create_certified_key(
     CertificateConfig::ACME {
       staging,
       email,
-      alt_names,
       persist_dir,
     } => {
       // TODO refresh certificates once they expire?
       let certificate = acme_handler
-        .initiate_challenge(staging, &persist_dir, &email, sni_name.into(), &alt_names)
+        .initiate_challenge(staging, &persist_dir, &email, sni_name.into())
         .await
         .map_err(other)?;
 
@@ -448,7 +447,6 @@ pub enum CertificateConfig {
   ACME {
     staging: bool,
     email: String,
-    alt_names: Vec<String>,
     persist_dir: String,
   },
 }

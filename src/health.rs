@@ -1,4 +1,4 @@
-use crate::server::SharedData;
+use crate::server::BackendPool;
 use arc_swap::{access::Access, ArcSwap};
 use futures::future::join_all;
 use hyper::{
@@ -9,17 +9,19 @@ use hyper::{
 use hyper_timeout::TimeoutConnector;
 use log::info;
 use serde::Deserialize;
+use std::time::Duration;
 use std::time::SystemTime;
-use std::{cmp, time::Duration};
 use std::{convert::TryFrom, ops::Deref};
 use std::{fmt, sync::Arc};
+use tokio::time::interval;
+/* Contains the user preferences regarding health checks */
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct HealthConfig {
   pub slow_threshold: i64,
   pub timeout: u64,
   pub path: String,
 }
-
+/* Healthiness of a backend server */
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Healthiness {
   Healthy,
@@ -31,43 +33,33 @@ impl fmt::Display for Healthiness {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
       Healthiness::Healthy => write!(f, "Healthy"),
-      Healthiness::Slow(respone_time) => write!(f, "Slow {}", respone_time),
+      Healthiness::Slow(response_time) => write!(f, "Slow {}", response_time),
       Healthiness::Unresponsive(Some(status_code)) => write!(f, "Unresponsive, status: {}", status_code),
       Healthiness::Unresponsive(None) => write!(f, "Unresponsive"),
     }
   }
 }
-
-pub async fn watch_health<A, G>(shared_data: A)
+/* Start loop to regularly contact backend to investigate the healthiness of each server.
+The healthiness is noted in the backend_pool vector  */
+pub async fn watch_health<A, G, H, J>(backend_pools: A, interval_duration: H)
 where
-  A: Access<SharedData, Guard = G> + Send + Sync + 'static,
-  G: Deref<Target = SharedData> + Send + Sync,
+  A: Access<Vec<Arc<BackendPool>>, Guard = G> + Send + Sync + 'static,
+  G: Deref<Target = Vec<Arc<BackendPool>>> + Send + Sync,
+  H: Access<Duration, Guard = J>,
+  J: Deref<Target = Duration>,
 {
-  let mut current_interval = shared_data.load().health_interval;
-  let mut interval_timer = tokio::time::interval(
-    chrono::Duration::seconds(cmp::max(1, current_interval))
-      .to_std()
-      .unwrap(),
-  );
-
   loop {
-    let loaded_pools = shared_data.load().backend_pools.clone();
-    let new_health_interval = shared_data.load().health_interval;
-    if current_interval != new_health_interval {
-      info!(
-        "Health check interval change from {}s to {}s",
-        current_interval, new_health_interval
-      );
-      current_interval = new_health_interval;
-      interval_timer = tokio::time::interval(
-        chrono::Duration::seconds(cmp::max(1, new_health_interval))
-          .to_std()
-          .unwrap(),
-      );
-    };
+    // set and start interval timer
+    let interval_duration = *interval_duration.load().deref();
+    if interval_duration == Duration::from_secs(0) {
+      tokio::time::sleep(Duration::from_secs(5)).await;
+      continue;
+    }
+    let mut interval_timer = interval(interval_duration);
     interval_timer.tick().await;
+    // create and perform server checks
+    let loaded_pools = backend_pools.load();
     let mut checks = Vec::new();
-
     for pool in loaded_pools.iter() {
       for (server_address, healthiness) in &pool.addresses {
         let future = check_server_health_once(server_address.clone(), healthiness, &pool.health_config);
@@ -75,9 +67,14 @@ where
       }
     }
     join_all(checks).await;
+    /*  Yes tick is called twice in one loop on purpose.
+    Since we are recreating interval_timer on every loop,
+    the first tick, marks the starting point, resuming immediately.
+    */
+    interval_timer.tick().await;
   }
 }
-
+/* Contacts one server and sets health value if changed */
 async fn check_server_health_once(
   server_address: String,
   healthiness: &ArcSwap<Healthiness>,
@@ -98,7 +95,7 @@ async fn check_server_health_once(
     healthiness.store(Arc::new(result));
   }
 }
-
+/* Returns the healthiness of the given server by performing a network request  */
 async fn contact_server(server_address: Uri, slow_threshold: i64, timeout: u64) -> Healthiness {
   let http_connector = HttpConnector::new();
   let mut connector = TimeoutConnector::new(http_connector);

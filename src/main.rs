@@ -3,7 +3,7 @@ use clap::{App, Arg};
 use configuration::{read_config, watch_config, RuntimeConfig};
 use listeners::{AcceptorProducer, Https};
 use server::Scheme;
-use std::{io, ops::Deref, sync::Arc};
+use std::{io, sync::Arc};
 use tls::ReconfigurableCertificateResolver;
 use tokio::try_join;
 use tokio_rustls::rustls::{NoClientAuth, ServerConfig};
@@ -52,8 +52,9 @@ pub async fn main() -> Result<(), io::Error> {
 }
 
 async fn watch_health(config: Arc<ArcSwap<RuntimeConfig>>) -> Result<(), io::Error> {
-  let shared_data = Map::new(config, |it: &RuntimeConfig| &it.shared_data);
-  health::watch_health(shared_data).await;
+  let backend_pools = Map::new(config.clone(), |it: &RuntimeConfig| &it.shared_data.backend_pools);
+  let health_interval = Map::new(config, |it: &RuntimeConfig| &it.health_interval);
+  health::watch_health(backend_pools, health_interval).await;
   Ok(())
 }
 

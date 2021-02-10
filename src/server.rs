@@ -98,21 +98,30 @@ impl Service<Request<Body>> for MainService {
 
         Box::pin(async move {
           // clone, filter, map, LoadBalancingContext:backend_addresses
-          let healthy_addresses = pool
+          let mut working_addresses = pool
             .addresses
             .iter()
             .filter(|(_, healthiness)| healthiness.load().as_ref() == &Healthiness::Healthy)
             .map(|(address, _)| address.as_str())
             .collect::<Vec<_>>();
 
-          if healthy_addresses.is_empty() {
-            // we don't have any healthy addresses, so don't call load balancer strategy and abort early
+          if working_addresses.is_empty() {
+            // replace healthy addresses with slow addresses
+            working_addresses = pool
+              .addresses
+              .iter()
+              .filter(|(_, healthiness)| matches!(healthiness.load().as_ref(), Healthiness::Slow(_)))
+              .map(|(address, _)| address.as_str())
+              .collect::<Vec<_>>();
+          }
+          if working_addresses.is_empty() {
+            // we don't have any working addresses, so don't call load balancer strategy and abort early
             // middlewares are also not running
             Ok(bad_gateway())
           } else {
             let context = load_balancing::Context {
               client_address: &client_address,
-              backend_addresses: &healthy_addresses,
+              backend_addresses: &working_addresses,
             };
             let backend = pool.strategy.select_backend(&request, &context);
             let result = backend
@@ -139,7 +148,6 @@ fn pool_by_req(shared_data: &SharedData, request: &Request<Body>, scheme: &Schem
 pub struct SharedData {
   pub backend_pools: Vec<Arc<BackendPool>>,
   pub acme_handler: AcmeHandler,
-  pub health_interval: i64,
 }
 
 #[derive(Debug)]
@@ -248,6 +256,7 @@ impl Display for Scheme {
 
 #[cfg(test)]
 mod tests {
+
   use super::*;
   use crate::load_balancing::random::Random;
   use std::{collections::HashMap, iter::FromIterator};
@@ -258,6 +267,7 @@ mod tests {
       http_address: "0.0.0.0:80".parse().unwrap(),
       https_address: "0.0.0.0:443".parse().unwrap(),
       certificates: HashMap::new(),
+      health_interval: std::time::Duration::from_secs(60),
     }
   }
   fn generate_test_service(host: String, scheme: Scheme) -> MainService {
@@ -281,7 +291,6 @@ mod tests {
           .build(),
         )],
         acme_handler: AcmeHandler::new(),
-        health_interval: 60,
       }))),
     }
   }

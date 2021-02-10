@@ -14,7 +14,7 @@ strategy = { StickyCookie = { cookie_name = "lb_cookie", http_only = false, secu
 [backend_pools.health_config]
 path = "/"
 slow_threshold = 201
-timeout = 300
+timeout = 500
 
 [backend_pools.middlewares.CustomErrorPages]
 location = "errorpages/"
@@ -38,7 +38,7 @@ strategy = { Random = {} }
 [backend_pools.health_config]
 path = "/"
 slow_threshold = 202
-timeout = 400
+timeout = 500
 
 [backend_pools.middlewares.Compression]
 
@@ -81,7 +81,7 @@ strategy = { Random = {} }
 [backend_pools.health_config]
 path = "/"
 slow_threshold = 204
-timeout = 600
+timeout = 500
 
 [backend_pools.middlewares.Compression]
 

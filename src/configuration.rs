@@ -133,7 +133,7 @@ async fn runtime_config_from_toml_config(other: TomlConfig) -> Result<RuntimeCon
   }
 
   let health_interval_config: HealthIntervalConfig = other.health_interval;
-  let health_interval: i64 = health_interval_config.check_every;
+  let health_interval = Duration::from_secs(health_interval_config.check_every);
 
   Ok(RuntimeConfig {
     http_address,
@@ -141,9 +141,9 @@ async fn runtime_config_from_toml_config(other: TomlConfig) -> Result<RuntimeCon
     shared_data: SharedData {
       backend_pools,
       acme_handler,
-      health_interval,
     },
     certificates,
+    health_interval,
   })
 }
 
@@ -219,10 +219,11 @@ pub struct RuntimeConfig {
   pub https_address: SocketAddr,
   pub shared_data: SharedData,
   pub certificates: HashMap<DNSName, CertifiedKey>,
+  pub health_interval: Duration,
 }
 #[derive(Debug, Deserialize, Default)]
 pub struct HealthIntervalConfig {
-  pub check_every: i64,
+  pub check_every: u64,
 }
 
 #[derive(Debug, Deserialize)]

@@ -90,8 +90,8 @@ limit = 256
 
 # ------------------------------------------------------------------------------
 [certificates]
-"www.arlb.de" = { Local = { certificate_path = "x509/www.arlb.de.cer", private_key_path = "x509/www.arlb.de.key" } }
 "https.localhost" = { Local = { certificate_path = "x509/https.localhost.cer", private_key_path = "x509/https.localhost.key" } }
+"www.arlb.de" = { Local = { certificate_path = "x509/www.arlb.de.cer", private_key_path = "x509/www.arlb.de.key" } }
 
 [health_interval]
 check_every = 10

@@ -53,7 +53,7 @@ All requests sent via HTTP will receive a `301 Moved Permanently` and will be re
 
 ## Max Body Size
 
-All requests with a `Content-Length` greater than the provided threshold will be aborted and a response of `413 Payload Too Large` is returned.
+All requests with a body size, specified in the `Content-Length` request header, greater than the provided threshold will be aborted and a response of `413 Payload Too Large` is returned.
 
 ```toml
 [backend_pools.middlewares.MaxBodySize]

@@ -14,7 +14,7 @@ strategy = { StickyCookie = { cookie_name = "lb_cookie", http_only = false, secu
 [backend_pools.health_config]
 path = "/"
 slow_threshold = 150
-timeout = 300
+timeout = 400
 
 [backend_pools.middlewares.CustomErrorPages]
 location = "errorpages/"
@@ -64,4 +64,4 @@ recursive = false
 "https.localhost" = { Local = { certificate_path = "x509/https.localhost.cer", private_key_path = "x509/https.localhost.key" } }
 
 [health_interval]
-check_every = 5
+check_every = 8

@@ -135,7 +135,7 @@ async fn runtime_config_from_toml_config(other: TomlConfig) -> Result<RuntimeCon
   }
 
   let health_interval_config: HealthIntervalConfig = other.health_interval;
-  let health_interval = Duration::from_secs(health_interval_config.check_every.unwrap_or(DEFAULT_HEALTH_INTERVAL));
+  let health_interval = Duration::from_secs(health_interval_config.check_every.unwrap());
 
   Ok(RuntimeConfig {
     http_address,
@@ -243,7 +243,7 @@ struct TomlConfig {
   backend_pools: Vec<BackendPoolConfig>,
   #[serde(default)]
   certificates: HashMap<String, CertificateConfig>,
-  #[serde(default)]
+  #[serde(default = "default_health_interval_config")]
   health_interval: HealthIntervalConfig,
 }
 
@@ -255,6 +255,12 @@ fn default_http_address() -> String {
 
 fn default_https_address() -> String {
   "[::]:443".to_string()
+}
+
+fn default_health_interval_config() -> HealthIntervalConfig {
+  HealthIntervalConfig {
+    check_every: Some(DEFAULT_HEALTH_INTERVAL),
+  }
 }
 
 impl TomlConfig {
@@ -309,10 +315,19 @@ struct BackendPoolConfig {
   addresses: Vec<String>,
   schemes: HashSet<Scheme>,
   client: Option<ClientConfig>,
+  #[serde(default = "default_health_config")]
   health_config: Option<HealthTomlConfig>,
   strategy: LoadBalancingStrategyConfig,
   #[serde(default)]
   middlewares: Table,
+}
+
+fn default_health_config() -> Option<HealthTomlConfig> {
+  Some(HealthTomlConfig {
+    slow_threshold: Some(DEFAULT_HEALTH_SLOW_THRESHOLD),
+    timeout: Some(DEFAULT_HEALTH_TIMEOUT),
+    path: Some(DEFAULT_HEALTH_PATH.to_string()),
+  })
 }
 
 impl From<BackendPoolConfig> for BackendPool {
@@ -329,11 +344,7 @@ impl From<BackendPoolConfig> for BackendPool {
     let chain = other.middlewares.into();
     let schemes = other.schemes;
 
-    let health_toml_config = health_toml_config.unwrap_or(HealthTomlConfig {
-      slow_threshold: None,
-      timeout: None,
-      path: None,
-    });
+    let health_toml_config = health_toml_config.unwrap();
     let health_config = HealthConfig {
       slow_threshold: health_toml_config
         .slow_threshold

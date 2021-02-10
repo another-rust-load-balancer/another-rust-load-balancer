@@ -221,10 +221,6 @@ pub struct RuntimeConfig {
   pub certificates: HashMap<DNSName, CertifiedKey>,
   pub health_interval: Duration,
 }
-#[derive(Debug, Deserialize, Default)]
-pub struct HealthIntervalConfig {
-  pub check_every: u64,
-}
 
 #[derive(Debug, Deserialize)]
 struct TomlConfig {
@@ -460,4 +456,9 @@ pub enum CertificateConfig {
     email: String,
     persist_dir: String,
   },
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct HealthIntervalConfig {
+  pub check_every: u64,
 }

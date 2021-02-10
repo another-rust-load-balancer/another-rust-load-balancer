@@ -50,13 +50,13 @@ where
 {
   let backend_pools = Arc::new(backend_pools);
   let mut interval_timer = tokio::time::interval(chrono::Duration::seconds(CHECK_INTERVAL).to_std().unwrap());
-  let backend_pools = backend_pools.load();
+
   loop {
     interval_timer.tick().await;
-    let backend_pools = backend_pools.clone();
+    let loaded_backend_pools = backend_pools.load();
     let mut checks = Vec::new();
 
-    for pool in backend_pools.deref() {
+    for pool in loaded_backend_pools.deref() {
       for (server_address, healthiness) in &pool.addresses {
         let future = check_server_health_once(server_address.clone(), healthiness, &pool.health_config);
         checks.push(future);

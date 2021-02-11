@@ -27,6 +27,6 @@ In ARLB, the ACME server is always `Let's Encrypt`. If you don't need a producti
 
 ```toml
 [certificates]
-"staging.youtube.de" = { ACME = { email = "yourmail@example.de", alt_names = [], persist_dir = "./certificates", staging = true } }
-"youtube.de" = { ACME = { email = "yourmail@example.de", alt_names = [], persist_dir = "./certificates", staging = false } }
+"staging.youtube.de" = { ACME = { email = "yourmail@example.com", alt_names = [], persist_dir = "./certificates", staging = true } }
+"youtube.de" = { ACME = { email = "yourmail@example.com", alt_names = [], persist_dir = "./certificates", staging = false } }
 ```

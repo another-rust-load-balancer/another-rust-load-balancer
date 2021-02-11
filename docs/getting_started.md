@@ -35,7 +35,7 @@ After that, you may want to add the binary to your `PATH`.
 
 ### Grab the binary
 
-There may be pre-compiled binary at the [github release page](https://github.com/another-rust-load-balancer/another-rust-load-balancer/releases)
+There may be a pre-compiled binary on the [github release page](https://github.com/another-rust-load-balancer/another-rust-load-balancer/releases)
 
 ## Running it
 

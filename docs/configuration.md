@@ -1,6 +1,8 @@
 # Configuration
 
-The configuration is supplied via a local TOML file
+The configuration is supplied via a local TOML file.
+
+## Example
 
 ```toml
 # backend.toml

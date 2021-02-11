@@ -1,6 +1,6 @@
 ## Matching Backends
 
-Every backend pool requires a `matcher` field. This field is responsible for checking if incoming requests should be forwarded to the respective backend pool. If multiple backend pools are configured, the matcher of each pool will be called in the order they're declared in the config until one match was successful. If no match was successful, a `404 Not Found` is returned.
+Every backend pool requires a `matcher` field. This field is used to decide if incoming requests should be forwarded to the respective backend pool. If multiple backend pools are configured, the matcher of each pool will be called in the order they appear in the config until one match was successful. If no match was successful, a `404 Not Found` is returned.
 
 ```toml
 # Standard host header matching

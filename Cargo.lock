@@ -48,7 +48,7 @@ dependencies = [
 
 [[package]]
 name = "another-rust-load-balancer"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acme-lib",
  "arc-swap 1.2.0",

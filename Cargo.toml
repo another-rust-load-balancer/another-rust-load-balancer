@@ -1,6 +1,6 @@
 [package]
 name = "another-rust-load-balancer"
-version = "0.1.0"
+version = "1.0.0"
 authors = [
   "Adrodoc <adrodoc55@googlemail.com>",
   "Zynaa <zyna1+github@protonmail.com>",

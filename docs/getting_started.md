@@ -47,7 +47,7 @@ By default ARLB binds to port 80 (HTTP) and 443 (HTTPS). On linux, every port be
 Also, a minimal configuration file is required:
 
 ```toml
-# backend.toml
+# config_example.toml
 [[backend_pools]]
 
 matcher = "Host('whoami.localhost')"
@@ -87,10 +87,10 @@ Now we're ready to start the process:
 
 ```sh
 # With setcap executed before
-/path/to/another-rust-load-balancer --config backend.toml
+/path/to/another-rust-load-balancer --config config_example.toml
 
 # With sudo
-sudo /path/to/another-rust-load-balancer --config backend.toml
+sudo /path/to/another-rust-load-balancer --config config_example.toml
 ```
 
 You're now able to issue requests to `whoami.localhost` via your browser or favorite HTTP tool. When using the test `docker-compose` file, every server responds with its own hostname. Due to the round robing strategy, performing requests to `whoami.localhost` yields 3 different responses:

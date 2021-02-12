@@ -5,7 +5,7 @@ The configuration is supplied via a local TOML file. It is passed to arlb with -
 ## Example
 
 ```toml
-# backend.toml
+# config_example.toml
 http_address = "[::]:80"
 https_address = "[::]:443"
 

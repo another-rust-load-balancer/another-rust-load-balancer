@@ -1,0 +1,12 @@
+[[backend_pools]]
+
+matcher = "Host('httpbin.localhost')"
+addresses = ["127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083"]
+schemes = ["HTTP"]
+strategy = { RoundRobin = {} }
+
+# Configure the health config
+[backend_pools.health_config]
+path = "/"
+slow_threshold = 150
+timeout = 400

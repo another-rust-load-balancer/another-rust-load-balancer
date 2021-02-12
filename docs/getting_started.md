@@ -54,8 +54,6 @@ matcher = "Host('whoami.localhost')"
 addresses = ["127.0.0.1:8080", "127.0.0.1:8081", "127.0.0.1:8082"]
 schemes = ["HTTP"]
 strategy = { RoundRobin = {} }
-[backend_pools.middlewares]
-Compression = {}
 ```
 
 This config file will load balance every request which is targeted to `whoami.localhost` between 3 local backend servers. Also, if the client supports compression, it will compress the backend server's response, thus saving bandwith.

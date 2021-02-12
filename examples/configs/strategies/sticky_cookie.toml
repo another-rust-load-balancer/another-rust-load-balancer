@@ -1,0 +1,19 @@
+[[backend_pools]]
+
+matcher = "Host('httpbin.localhost')"
+addresses = ["127.0.0.1:8081"]
+schemes = ["HTTP"]
+strategy = { StickyCookie = { cookie_name = "lb_cookie1", http_only = true, secure = false, same_site = { Strict = {} }, inner = { Random = {} } } }
+
+[[backend_pools]]
+matcher = "Host('httpbin2.localhost')"
+addresses = ["127.0.0.1:8082"]
+schemes = ["HTTP"]
+strategy = { StickyCookie = { cookie_name = "lb_cookie2", http_only = true, secure = false, same_site = { Lax = {} }, inner = { RoundRobin = {} } } }
+
+[[backend_pools]]
+
+matcher = "Host('httpbin3.localhost')"
+addresses = ["127.0.0.1:8083"]
+schemes = ["HTTP"]
+strategy = { StickyCookie = { cookie_name = "lb_cookie3", http_only = true, secure = false, same_site = { None = {} }, inner = { IPHash = {} } } }

@@ -1,0 +1,13 @@
+[[backend_pools]]
+
+matcher = "Host('https.localhost')"
+addresses = ["127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083"]
+schemes = ["HTTP", "HTTPS"]
+strategy = { RoundRobin = {} }
+
+# always redirects http requests to https
+[backend_pools.middlewares.HttpsRedirector]
+
+[certificates]
+"https.localhost" = { Local = { certificate_path = "examples/x509/https.localhost.cer", private_key_path = "examples/x509/https.localhost.key" } }
+

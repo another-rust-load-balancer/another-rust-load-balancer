@@ -1,0 +1,10 @@
+[[backend_pools]]
+
+matcher = "Host('httpbin.localhost')"
+addresses = ["127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083"]
+schemes = ["HTTP"]
+strategy = { RoundRobin = {} }
+
+# define a max body size for requests
+[backend_pools.middlewares.MaxBodySize]
+limit = 256

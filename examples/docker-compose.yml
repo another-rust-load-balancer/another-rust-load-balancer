@@ -1,0 +1,63 @@
+version: "2.2" # optional since v1.27.0
+services:
+  web01:
+    image: kennethreitz/httpbin
+    ports:
+      - 8081:80
+    networks:
+      testing_net:
+        ipv4_address: 172.28.1.1
+  web02:
+    image: kennethreitz/httpbin
+    ports:
+      - 8082:80
+    networks:
+      testing_net:
+        ipv4_address: 172.28.1.2
+  web03:
+    image: kennethreitz/httpbin
+    ports:
+      - 8083:80
+    networks:
+      testing_net:
+        ipv4_address: 172.28.1.3
+  whoami01:
+    image: containous/whoami
+    ports:
+      - 8084:80
+    networks:
+      testing_net:
+        ipv4_address: 172.28.1.4
+  whoami02:
+    image: containous/whoami
+    ports:
+      - 8085:80
+    networks:
+      testing_net:
+        ipv4_address: 172.28.1.5
+  whoami03:
+    image: containous/whoami
+    ports:
+      - 8086:80
+    networks:
+      testing_net:
+        ipv4_address: 172.28.1.6
+  openldap:
+    image: docker.io/bitnami/openldap:2-debian-10
+    ports:
+      - '1389:1389'
+    environment:
+      - LDAP_ADMIN_USERNAME=admin
+      - LDAP_ADMIN_PASSWORD=adminpassword
+      - LDAP_USERS=tyrion,user02
+      - LDAP_PASSWORDS=foo,password2
+    networks:
+      testing_net:
+        ipv4_address: 172.28.1.7
+
+networks:
+  testing_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16

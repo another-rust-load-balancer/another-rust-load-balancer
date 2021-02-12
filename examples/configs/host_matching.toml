@@ -1,0 +1,7 @@
+[[backend_pools]]
+
+# Match host and path. (only matches /
+matcher = "(Host('httpbin.localhost') || Host('httpbin2.localhost')) && (Path('/'))"
+addresses = ["127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083"]
+schemes = ["HTTP"]
+strategy = { RoundRobin = {} }

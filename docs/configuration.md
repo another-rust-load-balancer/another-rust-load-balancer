@@ -28,7 +28,7 @@ window_sec = 1
 
 [certificates]
 "whoami.localhost" = { Local = { certificate_path = "x509/whoami.localhost.cer", private_key_path = "x509/whoami.localhost.key" } }
-"youtube.de" = { ACME = { email = "yourmail@example.de", staging = false, alt_names = [], persist_dir = "./certificates" } }
+"youtube.de" = { ACME = { email = "yourmail@example.de", staging = false, persist_dir = "./certificates" } }
 ```
 
 It currently contains two top level entries:
@@ -163,7 +163,7 @@ Examples:
 ```toml
 [certificates]
 "whoami.localhost" = { Local = { certificate_path = "x509/whoami.localhost.cer", private_key_path = "x509/whoami.localhost.key" } }
-"youtube.de" = { ACME = { email = "yourmail@example.de", staging = false, alt_names = [], persist_dir = "./certificates" } }
+"youtube.de" = { ACME = { email = "yourmail@example.de", staging = false, persist_dir = "./certificates" } }
 ```
 
 A full explanation of local/acme certificates can be found in [Certificates/ACME](certificates.md)

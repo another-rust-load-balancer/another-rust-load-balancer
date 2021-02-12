@@ -1,0 +1,21 @@
+[[backend_pools]]
+
+matcher = "Host('httpbin.localhost')"
+addresses = ["127.0.0.1:8082", "127.0.0.1:8083"]
+schemes = ["HTTP"]
+strategy = { RoundRobin = {} }
+
+# Sets the maximum idle connection per host allowed in the pool.
+# 0 disables to connection pool
+client = { pool_max_idle_per_host = 0 }
+
+
+[[backend_pools]]
+
+matcher = "Host('httpbin2.localhost')"
+addresses = ["127.0.0.1:8082", "127.0.0.1:8083"]
+schemes = ["HTTP"]
+strategy = { RoundRobin = {} }
+
+# Set an optional timeout for idle sockets being kept-alive.
+client = { pool_idle_timeout = { secs = 5, nanos = 0 } }

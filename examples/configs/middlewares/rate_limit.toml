@@ -1,0 +1,11 @@
+[[backend_pools]]
+
+matcher = "Host('httpbin.localhost')"
+addresses = ["127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083"]
+schemes = ["HTTP"]
+strategy = { RoundRobin = {} }
+
+# Limit the amount of requests a client can do
+[backend_pools.middlewares.RateLimiter]
+limit = 5
+window_sec = 10

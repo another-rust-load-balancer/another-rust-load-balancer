@@ -1,0 +1,11 @@
+[[backend_pools]]
+
+matcher = "Host('httpbin.localhost')"
+addresses = ["127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083"]
+schemes = ["HTTP"]
+strategy = { RoundRobin = {} }
+
+# Display custom error pages for certain error codes. The folder must contain a "{errorcode}.html" file (e.g. 404.html)
+[backend_pools.middlewares.CustomErrorPages]
+location = "examples/errorpages/"
+errors = [404, 429, 500]

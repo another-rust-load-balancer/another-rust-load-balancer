@@ -1,0 +1,10 @@
+# You can run the reverse proxy under a different port
+http_address = "0.0.0.0:8080"
+https_address = "0.0.0.0:4443"
+
+[[backend_pools]]
+
+matcher = "Host('httpbin.localhost:8080')"
+addresses = ["127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083"]
+schemes = ["HTTP"]
+strategy = { RoundRobin = {} }

@@ -1,0 +1,3 @@
+[server]
+subjectAltName=DNS:https.localhost
+

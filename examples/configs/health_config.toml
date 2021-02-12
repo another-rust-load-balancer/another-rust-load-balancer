@@ -10,3 +10,6 @@ strategy = { RoundRobin = {} }
 path = "/"
 slow_threshold = 150
 timeout = 400
+
+[health_interval]
+check_every = 5

@@ -1,7 +1,7 @@
 [[backend_pools]]
 
-matcher = "Host('httpbin.localhost')"
-addresses = ["127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083"]
+matcher = "Host('whoami.localhost')"
+addresses = ["127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086"]
 schemes = ["HTTP"]
 strategy = { RoundRobin = {} }
 

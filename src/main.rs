@@ -1,6 +1,6 @@
 use arc_swap::{access::Map, ArcSwap};
 use clap::{App, Arg};
-use configuration::{read_config, watch_config, RuntimeConfig};
+use configuration::{read_initial_config, watch_config, RuntimeConfig};
 use listeners::{AcceptorProducer, Https};
 use server::Scheme;
 use std::{io, sync::Arc};
@@ -41,7 +41,7 @@ pub async fn main() -> Result<(), io::Error> {
 
   logging::initialize();
 
-  let config = read_config(&backend).await?;
+  let config = read_initial_config(&backend).await?;
   try_join!(
     watch_config(backend, config.clone()),
     watch_health(config.clone()),

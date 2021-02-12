@@ -37,8 +37,8 @@ use tokio_rustls::{
 };
 use toml::{value::Table, Value};
 
-pub async fn read_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<RuntimeConfig>>, io::Error> {
-  let config = read_runtime_config(&path)
+pub async fn read_initial_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<RuntimeConfig>>, io::Error> {
+  let config = read_runtime_config(&path, false)
     .await
     .map_err(|e| io::Error::new(e.kind(), format!("Could not load configuration due to: {}", e)))?;
   Ok(Arc::new(ArcSwap::from_pointee(config)))
@@ -50,10 +50,8 @@ where
 {
   let mut receiver = start_config_watcher(path);
   loop {
-    receiver.changed().await.map_err(broken_pipe)?;
-
     match receiver.borrow().deref() {
-      DebouncedEvent::Write(path) => match read_runtime_config(&path).await {
+      DebouncedEvent::Write(path) => match read_runtime_config(&path, true).await {
         Ok(new_config) => {
           let old_config = config.load();
           warn_about_ineffectual_config_changes(&old_config, &new_config);
@@ -68,6 +66,7 @@ where
       DebouncedEvent::Remove(path) => warn!("'{}' was deleted", path.display()),
       e => trace!("{:?}", e),
     }
+    receiver.changed().await.map_err(broken_pipe)?;
   }
 }
 
@@ -110,28 +109,33 @@ fn watch_config_blocking<P: AsRef<Path>>(
   }
 }
 
-async fn read_runtime_config<P>(path: P) -> Result<RuntimeConfig, io::Error>
+async fn read_runtime_config<P>(path: P, init_certificates: bool) -> Result<RuntimeConfig, io::Error>
 where
   P: AsRef<Path>,
 {
   let config = TomlConfig::read(&path)?;
-  runtime_config_from_toml_config(config).await
+  runtime_config_from_toml_config(config, init_certificates).await
 }
 
-async fn runtime_config_from_toml_config(other: TomlConfig) -> Result<RuntimeConfig, io::Error> {
+async fn runtime_config_from_toml_config(
+  other: TomlConfig,
+  init_certificates: bool,
+) -> Result<RuntimeConfig, io::Error> {
   let http_address = other.http_address.parse().map_err(invalid_data)?;
   let https_address = other.https_address.parse().map_err(invalid_data)?;
 
-  let acme_handler = AcmeHandler::new();
   let backend_pools = other.backend_pools.into_iter().map(|it| Arc::new(it.into())).collect();
 
+  let acme_handler = AcmeHandler::new();
   let mut certificates = HashMap::new();
-  for (sni_name, certificate_config) in other.certificates {
-    let dns_name = DNSNameRef::try_from_ascii_str(&sni_name)
-      .map_err(invalid_data)?
-      .to_owned();
-    let certificate = create_certified_key(certificate_config, dns_name.as_ref(), &acme_handler).await?;
-    certificates.insert(dns_name, certificate);
+  if init_certificates {
+    for (sni_name, certificate_config) in other.certificates {
+      let dns_name = DNSNameRef::try_from_ascii_str(&sni_name)
+        .map_err(invalid_data)?
+        .to_owned();
+      let certificate = create_certified_key(certificate_config, dns_name.as_ref(), &acme_handler).await?;
+      certificates.insert(dns_name, certificate);
+    }
   }
 
   let health_interval_config: HealthIntervalConfig = other.health_interval;

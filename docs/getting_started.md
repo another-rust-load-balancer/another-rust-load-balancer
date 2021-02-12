@@ -105,3 +105,14 @@ Hostname: ef8abdc45aef
 ▶ curl -s -H "Host: whoami.localhost" 127.0.0.1 | grep "Hostname: "
 Hostname: 4c3e51c1ba8c
 ```
+
+## Examples
+
+More complex and advanced examples can be found in the `/examples` directory of the project. They showcase all configuration possibilities, load balancing strategies, middlewares and IPv6 usage.
+
+```
+# May need to start some of the docker-compose files in `/examples` first
+# docker-compose up -d -f examples/docker-compose.yml
+
+sudo /path/to/another-rust-load-balancer --backend examples/configs/https.toml
+```

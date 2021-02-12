@@ -114,19 +114,19 @@ fn watch_config_blocking<P: AsRef<Path>>(
 async fn read_runtime_config<P>(
   path: P,
   acme_handler: Arc<AcmeHandler>,
-  init_certificates: bool,
+  init_acme: bool,
 ) -> Result<RuntimeConfig, io::Error>
 where
   P: AsRef<Path>,
 {
   let config = TomlConfig::read(&path)?;
-  runtime_config_from_toml_config(config, acme_handler, init_certificates).await
+  runtime_config_from_toml_config(config, acme_handler, init_acme).await
 }
 
 async fn runtime_config_from_toml_config(
   other: TomlConfig,
   acme_handler: Arc<AcmeHandler>,
-  init_certificates: bool,
+  init_acme: bool,
 ) -> Result<RuntimeConfig, io::Error> {
   let http_address = other.http_address.parse().map_err(invalid_data)?;
   let https_address = other.https_address.parse().map_err(invalid_data)?;
@@ -134,11 +134,11 @@ async fn runtime_config_from_toml_config(
   let backend_pools = other.backend_pools.into_iter().map(|it| Arc::new(it.into())).collect();
 
   let mut certificates = HashMap::new();
-  if init_certificates {
-    for (sni_name, certificate_config) in other.certificates {
-      let dns_name = DNSNameRef::try_from_ascii_str(&sni_name)
-        .map_err(invalid_data)?
-        .to_owned();
+  for (sni_name, certificate_config) in other.certificates {
+    let dns_name = DNSNameRef::try_from_ascii_str(&sni_name)
+      .map_err(invalid_data)?
+      .to_owned();
+    if init_acme || !matches!(certificate_config, CertificateConfig::ACME { .. }) {
       let certificate = create_certified_key(certificate_config, dns_name.as_ref(), &acme_handler).await?;
       certificates.insert(dns_name, certificate);
     }

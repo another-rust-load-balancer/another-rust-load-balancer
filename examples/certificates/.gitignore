@@ -2,3 +2,4 @@
 *.cnf
 *.csr
 *.key
+serial.txt

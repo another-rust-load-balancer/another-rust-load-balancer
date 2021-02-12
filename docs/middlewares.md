@@ -35,7 +35,7 @@ Supported algorithms:
 
 ## Custom Error Pages
 
-If the backend server responds with a matching status code, a HTML file named `{STATUS_CODE}.html` inside the provided `location` folder will be sent to the client instead.
+If the backend server responds with a matching status code, a HTML file named `{STATUS_CODE}.html` inside the provided `location` folder will be sent to the client instead. The `location` will be relative from the current working directory, **not the configuration file location**.
 
 ```toml
 [backend_pools.middlewares.CustomErrorPages]

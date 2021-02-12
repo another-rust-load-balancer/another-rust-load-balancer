@@ -16,8 +16,7 @@ use tokio_rustls::{
 };
 
 pub fn certified_key_from_acme_certificate(certificate: acme_lib::Certificate) -> Result<CertifiedKey, io::Error> {
-  let mut reader = BufReader::new(certificate.certificate().as_bytes());
-  let certificates = certs(&mut reader).map_err(|_| {
+  let certificates = certs(&mut certificate.certificate().as_bytes()).map_err(|_| {
     io::Error::new(
       InvalidData,
       format!("Invalid certificate"),

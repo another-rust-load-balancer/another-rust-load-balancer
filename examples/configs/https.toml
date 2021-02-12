@@ -13,7 +13,7 @@ schemes = ["HTTPS"]
 strategy = { RoundRobin = {} }
 
 [certificates]
-"https.localhost" = { Local = { certificate_path = "examples/x509/https.localhost.cer", private_key_path = "examples/x509/https.localhost.key" } }
+"https.localhost" = { Local = { certificate_path = "x509/https.localhost.cer", private_key_path = "x509/https.localhost.key" } }
 
 # Won't work with a local domain. Replace with your domain and email.
 # "whoami.localhost" = { ACME = { email = "yourmail@example.de", staging = false, persist_dir = "./certificates" } }

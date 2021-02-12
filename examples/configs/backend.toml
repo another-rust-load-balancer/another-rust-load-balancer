@@ -61,7 +61,7 @@ recursive = false
 
 # ------------------------------------------------------------------------------
 [certificates]
-"https.localhost" = { Local = { certificate_path = "examples/x509/https.localhost.cer", private_key_path = "examples/x509/https.localhost.key" } }
+"https.localhost" = { Local = { certificate_path = "x509/https.localhost.cer", private_key_path = "x509/https.localhost.key" } }
 
 [health_interval]
 check_every = 8

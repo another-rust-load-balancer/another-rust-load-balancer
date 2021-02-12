@@ -25,25 +25,25 @@ mod utils;
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {
   let matches = App::new("Another Rust Load Balancer")
-    .version("0.1")
+    .version("1.0")
     .about("It's basically just another rust load balancer")
     .arg(
-      Arg::with_name("backend")
-        .short("b")
-        .long("backend")
+      Arg::with_name("config")
+        .short("c")
+        .long("config")
         .value_name("TOML FILE")
-        .help("The path to the backend toml configuration.")
+        .help("The path to the configuration in TOML format.")
         .required(true)
         .takes_value(true),
     )
     .get_matches();
-  let backend = matches.value_of("backend").unwrap().to_string();
+  let config_path = matches.value_of("config").unwrap().to_string();
 
   logging::initialize();
 
-  let config = read_initial_config(&backend).await?;
+  let config = read_initial_config(&config_path).await?;
   try_join!(
-    watch_config(backend, config.clone()),
+    watch_config(config_path, config.clone()),
     watch_health(config.clone()),
     listen_for_http_request(config.clone()),
     listen_for_https_request(config.clone())

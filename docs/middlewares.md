@@ -6,10 +6,10 @@ This middleware allows securing a backend pool with HTTP Basic Auth using an LDA
 
 Parameters:
 
-* `ldap_address`: The address of the LDAP server.
-* `user_directory`: Directory where the users are stored.
-* `rdn_identifier`: The attribute that should be used as a username.
-* `recursive`: Indicates whether subdirectories of `user_directory` should be searched.
+- `ldap_address`: The address of the LDAP server.
+- `user_directory`: Directory where the users are stored.
+- `rdn_identifier`: The attribute that should be used as a username.
+- `recursive`: Indicates whether subdirectories of `user_directory` should be searched.
 
 ```toml
 [backend_pools.middlewares.Authentication]
@@ -39,7 +39,7 @@ If the backend server responds with a matching status code, a HTML file named `{
 
 ```toml
 [backend_pools.middlewares.CustomErrorPages]
-location = "errorpages/"
+location = "../../errorpages"
 errors = [404, 500]
 ```
 

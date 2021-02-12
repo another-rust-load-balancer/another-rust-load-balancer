@@ -9,5 +9,5 @@ strategy = { RoundRobin = {} }
 [backend_pools.middlewares.HttpsRedirector]
 
 [certificates]
-"https.localhost" = { Local = { certificate_path = "examples/x509/https.localhost.cer", private_key_path = "examples/x509/https.localhost.key" } }
+"https.localhost" = { Local = { certificate_path = "../../certificates/https.localhost.cer", private_key_path = "../../certificates/https.localhost.key" } }
 

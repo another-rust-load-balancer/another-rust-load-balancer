@@ -27,7 +27,7 @@ window_sec = 1
 [backend_pools.middlewares.Compression]
 
 [certificates]
-"whoami.localhost" = { Local = { certificate_path = "x509/whoami.localhost.cer", private_key_path = "x509/whoami.localhost.key" } }
+"whoami.localhost" = { Local = { certificate_path = "../certificates/whoami.localhost.cer", private_key_path = "../certificates/whoami.localhost.key" } }
 "youtube.de" = { ACME = { email = "yourmail@example.de", staging = false, persist_dir = "./certificates" } }
 ```
 
@@ -162,7 +162,7 @@ Examples:
 
 ```toml
 [certificates]
-"whoami.localhost" = { Local = { certificate_path = "x509/whoami.localhost.cer", private_key_path = "x509/whoami.localhost.key" } }
+"whoami.localhost" = { Local = { certificate_path = "../certificates/whoami.localhost.cer", private_key_path = "../certificates/whoami.localhost.key" } }
 "youtube.de" = { ACME = { email = "yourmail@example.de", staging = false, persist_dir = "./certificates" } }
 ```
 

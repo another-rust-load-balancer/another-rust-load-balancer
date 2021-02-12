@@ -9,13 +9,18 @@ ARLB supports two different kind of certificates:
 
 ## Local
 
-A local certificate is used to secure the HTTPS connection. A path to a `.cer` and `.key` file needs to be provided. For self-signed certificates, you can take a look at the included `generate-ca-and-server-certificates.sh` script.
+A local certificate is used to secure the HTTPS connection. A path to a `.cer` and `.key` file needs to be provided..
 
 ```toml
 [certificates]
-"whoami.localhost" = { Local = { certificate_path = "x509/whoami.localhost.cer", private_key_path = "x509/whoami.localhost.key" } }
-"youtube.de" = { Local = { certificate_path = "x509/youtube.de.cer", private_key_path = "x509/youtube.de.key" } }
+"whoami.localhost" = { Local = { certificate_path = "../certificates/whoami.localhost.cer", private_key_path = "../certificates/whoami.localhost.key" } }
+"youtube.de" = { Local = { certificate_path = "../certificates/youtube.de.cer", private_key_path = "../certificates/youtube.de.key" } }
 ```
+
+In the `/examples/certificates` folder two scripts can be used to generated local self-signed cerificates. The output will be located in the current working directory. If you want to test the related configs, make sure the generated certificates are located inside `/examples/certificates`.
+
+- `generate-ca-certificate.sh`: Generates a CA certificate and private key. This only needs to be run once.
+- `generate-server-certificate.sh [domain]`: Generates a certificate and a private key for the given `domain`. Example call: `generate-server-certificate.sh https.localhost`
 
 ## ACME
 

@@ -7,5 +7,5 @@ strategy = { RoundRobin = {} }
 
 # Display custom error pages for certain error codes. The folder must contain a "{errorcode}.html" file (e.g. 404.html)
 [backend_pools.middlewares.CustomErrorPages]
-location = "examples/errorpages/"
+location = "../../errorpages"
 errors = [404, 429, 500]

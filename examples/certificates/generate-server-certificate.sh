@@ -9,7 +9,6 @@ if [ -z "${domain_name}" ]; then
     exit 1
 fi
 
-cd x509
 typeset -i serial=$(cat serial.txt)+1
 echo $serial > serial.txt
 

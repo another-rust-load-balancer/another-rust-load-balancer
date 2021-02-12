@@ -8,7 +8,7 @@ use log4rs::{
 use pattern::PatternEncoder;
 
 pub fn initialize() -> log4rs::Handle {
-  let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "DEBUG".into());
+  let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "INFO".into());
   let level_filter =
     parse_level_filter(&log_level).unwrap_or_else(|| panic!(format!("Invalid log level: {}", &log_level)));
 

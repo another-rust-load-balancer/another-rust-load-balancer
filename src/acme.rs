@@ -3,7 +3,10 @@ use acme_lib::order::NewOrder;
 use acme_lib::persist::FilePersist;
 use acme_lib::{create_rsa_key, Certificate, Directory, DirectoryUrl, Error};
 use hyper::{Body, Request, Response, StatusCode};
-use std::sync::{Arc, Mutex};
+use std::{
+  path::Path,
+  sync::{Arc, Mutex},
+};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio_util::either::Either;
 use tokio_util::either::Either::{Left, Right};
@@ -80,15 +83,15 @@ impl AcmeHandler {
     });
   }
 
-  pub async fn initiate_challenge(
+  pub async fn initiate_challenge<P: AsRef<Path>>(
     &self,
     staging: bool,
-    persist_dir: &str,
+    persist_dir: P,
     email: &str,
-    primary_name: &str
+    primary_name: &str,
   ) -> Result<Certificate, Error> {
-    std::fs::create_dir_all(persist_dir).map_err(|e| Error::Other(e.to_string()))?;
-    let persist = FilePersist::new(persist_dir);
+    std::fs::create_dir_all(&persist_dir).map_err(|e| Error::Other(e.to_string()))?;
+    let persist = FilePersist::new(&persist_dir);
     let dir_url = if staging {
       DirectoryUrl::LetsEncryptStaging
     } else {

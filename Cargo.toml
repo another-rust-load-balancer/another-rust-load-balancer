@@ -14,8 +14,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-acme-lib = "0.8.1"
-arc-swap = "1.2.0"
+acme-lib = "0.8"
+arc-swap = "1.2"
 async-compression = { version = "0.3", features = ["brotli", "deflate", "gzip", "tokio"] }
 async-stream = "0.3"
 async-trait = "0.1"
@@ -29,7 +29,7 @@ gethostname = "0.2"
 http-auth-basic = "0.1"
 hyper = { version = "0.14", features = ["client", "server", "http1", "http2", "stream"] }
 hyper-rustls = "0.22"
-hyper-timeout = "0.4.1"
+hyper-timeout = "0.4"
 ldap3 = "0.9"
 linked-hash-map = "0.5"
 log = "0.4"
@@ -42,7 +42,7 @@ regex = "1.4"
 serde = { version = "1.0", features = ["derive"] }
 tokio = {version = "1.0", features = ["full"] }
 tokio-rustls = "0.22"
-tokio-test = "0.4.0"
+tokio-test = "0.4"
 tokio-util = { version = "0.6", features = ["full"] }
 toml = { version = "0.5", features = ["preserve_order"] }
 url = "2.2"

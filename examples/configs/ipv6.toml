@@ -1,0 +1,6 @@
+[[backend_pools]]
+
+matcher = "Host('httpbin.localhost')"
+addresses = ["[2001:3200:3200::1:4]:80", "[2001:3200:3200::1:5]:80", "[2001:3200:3200::1:6]:80"]
+schemes = ["HTTP"]
+strategy = { Random = {} }

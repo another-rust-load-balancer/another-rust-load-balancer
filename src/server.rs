@@ -147,7 +147,7 @@ fn pool_by_req(shared_data: &SharedData, request: &Request<Body>, scheme: &Schem
 
 pub struct SharedData {
   pub backend_pools: Vec<Arc<BackendPool>>,
-  pub acme_handler: AcmeHandler,
+  pub acme_handler: Arc<AcmeHandler>,
 }
 
 #[derive(Debug)]
@@ -290,7 +290,7 @@ mod tests {
           )
           .build(),
         )],
-        acme_handler: AcmeHandler::new(),
+        acme_handler: Arc::new(AcmeHandler::new()),
       }))),
     }
   }

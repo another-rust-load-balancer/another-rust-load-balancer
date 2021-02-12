@@ -38,7 +38,8 @@ use tokio_rustls::{
 use toml::{value::Table, Value};
 
 pub async fn read_initial_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<RuntimeConfig>>, io::Error> {
-  let config = read_runtime_config(&path, false)
+  let acme_handler = Arc::new(AcmeHandler::new());
+  let config = read_runtime_config(&path, acme_handler, false)
     .await
     .map_err(|e| io::Error::new(e.kind(), format!("Could not load configuration due to: {}", e)))?;
   Ok(Arc::new(ArcSwap::from_pointee(config)))
@@ -50,10 +51,11 @@ where
 {
   let mut receiver = start_config_watcher(path);
   loop {
+    let old_config = config.load();
+    let acme_handler = old_config.shared_data.acme_handler.clone();
     match receiver.borrow().deref() {
-      DebouncedEvent::Write(path) => match read_runtime_config(&path, true).await {
+      DebouncedEvent::Write(path) => match read_runtime_config(&path, acme_handler, true).await {
         Ok(new_config) => {
-          let old_config = config.load();
           warn_about_ineffectual_config_changes(&old_config, &new_config);
           config.store(Arc::new(new_config));
           info!("Reloaded configuration");
@@ -109,16 +111,21 @@ fn watch_config_blocking<P: AsRef<Path>>(
   }
 }
 
-async fn read_runtime_config<P>(path: P, init_certificates: bool) -> Result<RuntimeConfig, io::Error>
+async fn read_runtime_config<P>(
+  path: P,
+  acme_handler: Arc<AcmeHandler>,
+  init_certificates: bool,
+) -> Result<RuntimeConfig, io::Error>
 where
   P: AsRef<Path>,
 {
   let config = TomlConfig::read(&path)?;
-  runtime_config_from_toml_config(config, init_certificates).await
+  runtime_config_from_toml_config(config, acme_handler, init_certificates).await
 }
 
 async fn runtime_config_from_toml_config(
   other: TomlConfig,
+  acme_handler: Arc<AcmeHandler>,
   init_certificates: bool,
 ) -> Result<RuntimeConfig, io::Error> {
   let http_address = other.http_address.parse().map_err(invalid_data)?;
@@ -126,7 +133,6 @@ async fn runtime_config_from_toml_config(
 
   let backend_pools = other.backend_pools.into_iter().map(|it| Arc::new(it.into())).collect();
 
-  let acme_handler = AcmeHandler::new();
   let mut certificates = HashMap::new();
   if init_certificates {
     for (sni_name, certificate_config) in other.certificates {

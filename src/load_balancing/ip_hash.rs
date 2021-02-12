@@ -33,7 +33,7 @@ mod tests {
     let request = Request::builder().body(Body::empty()).unwrap();
     let context = Context {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
-      backend_addresses: &mut ["127.0.0.1:1".into(), "127.0.0.1:2".into()],
+      backend_addresses: &mut ["127.0.0.1:1", "127.0.0.1:2"],
     };
     let strategy = IPHash::new();
 
@@ -49,23 +49,13 @@ mod tests {
     let request_1 = Request::builder().body(Body::empty()).unwrap();
     let context_1 = Context {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
-      backend_addresses: &mut [
-        "127.0.0.1:1".into(),
-        "127.0.0.1:2".into(),
-        "127.0.0.1:3".into(),
-        "127.0.0.1:4".into(),
-      ],
+      backend_addresses: &mut ["127.0.0.1:1", "127.0.0.1:2", "127.0.0.1:3", "127.0.0.1:4"],
     };
 
     let request_2 = Request::builder().body(Body::empty()).unwrap();
     let context_2 = Context {
       client_address: &"192.168.0.4:3000".parse().unwrap(),
-      backend_addresses: &mut [
-        "127.0.0.1:1".into(),
-        "127.0.0.1:2".into(),
-        "127.0.0.1:3".into(),
-        "127.0.0.1:4".into(),
-      ],
+      backend_addresses: &mut ["127.0.0.1:1", "127.0.0.1:2", "127.0.0.1:3", "127.0.0.1:4"],
     };
 
     let strategy = IPHash::new();

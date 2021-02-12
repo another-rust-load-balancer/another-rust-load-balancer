@@ -34,7 +34,7 @@ mod tests {
     let address = "127.0.0.1:1";
     let context = Context {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
-      backend_addresses: &mut [address.into()],
+      backend_addresses: &mut [address],
     };
     let strategy = RoundRobin::new();
 
@@ -50,7 +50,7 @@ mod tests {
     let address_2 = "127.0.0.1:2";
     let context = Context {
       client_address: &"127.0.0.1:3000".parse().unwrap(),
-      backend_addresses: &mut [address_1.into(), address_2.into()],
+      backend_addresses: &mut [address_1, address_2],
     };
     let strategy = RoundRobin::new();
 

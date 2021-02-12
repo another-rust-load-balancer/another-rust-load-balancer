@@ -22,11 +22,15 @@ Once unresponsive servers pass another health check they become available again 
 
 ## Defining parameteres in TOML
 
-Custom values in the configuration TOML file can be used to alter the behaviour of the health checks. This usage of this is optional.
+Custom values in the configuration TOML file can be used to alter the behaviour of the health checks. This is optional.
+
 
 - `path` sets the path component of the request address. The default value is `/`.
 - `slow_threshold` sets the response time (in ms) above which a server is categorized as slow. The default value is `300` ms.
 - `timeout` Specifies the time (in ms) after which the health check is aborted and the server declared unresponsive. The default value is `500` ms.
+
+A separat global value sets the time interval.
+- `check_every ` sets the time interval in seconds in which health checks are performed.
 
 ### Examples:
 
@@ -43,8 +47,8 @@ path = "/health"
 slow_threshold = 150
 timeout = 300
 ```
-
-A time interval for the health checks is set globally for all backend pools. The number represents seconds. The default value is 10 seconds.
+### Interval 
+A time interval for the health checks is set globally for all backend pools. The number represents seconds. The default value is 10 seconds. Setting the value to 0 deactives health checks entirely. This is optional.
 
 ```
 [health_interval]

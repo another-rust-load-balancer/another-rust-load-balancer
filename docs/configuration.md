@@ -1,6 +1,6 @@
 # Configuration
 
-The configuration is supplied via a local TOML file.
+The configuration is supplied via a local TOML file. It is passed to arlb with --config or -c followed by the path to the file.
 
 ## Example
 

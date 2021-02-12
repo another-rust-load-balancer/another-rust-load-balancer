@@ -39,7 +39,9 @@ use toml::{value::Table, Value};
 
 pub async fn read_initial_config<P: AsRef<Path>>(path: P) -> Result<Arc<ArcSwap<RuntimeConfig>>, io::Error> {
   let acme_handler = Arc::new(AcmeHandler::new());
-  let config = read_runtime_config(&path, acme_handler, false)
+  // Don't initialize ACME certificates on startup, because the HTTP listener is not running yet
+  let init_acme = false;
+  let config = read_runtime_config(&path, acme_handler, init_acme)
     .await
     .map_err(|e| io::Error::new(e.kind(), format!("Could not load configuration due to: {}", e)))?;
   Ok(Arc::new(ArcSwap::from_pointee(config)))

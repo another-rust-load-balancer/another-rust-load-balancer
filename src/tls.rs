@@ -16,12 +16,8 @@ use tokio_rustls::{
 };
 
 pub fn certified_key_from_acme_certificate(certificate: acme_lib::Certificate) -> Result<CertifiedKey, io::Error> {
-  let certificates = certs(&mut certificate.certificate().as_bytes()).map_err(|_| {
-    io::Error::new(
-      InvalidData,
-      format!("Invalid certificate"),
-    )
-  })?;
+  let certificates = certs(&mut certificate.certificate().as_bytes())
+    .map_err(|_| io::Error::new(InvalidData, format!("Invalid certificate")))?;
   let private_key = PrivateKey(certificate.private_key_der());
   let private_key = RSASigningKey::new(&private_key).map_err(|_| io::Error::new(InvalidData, "Invalid RSA key"))?;
   Ok(CertifiedKey::new(certificates, Arc::new(Box::new(private_key))))

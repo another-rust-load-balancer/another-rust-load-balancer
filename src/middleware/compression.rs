@@ -32,7 +32,7 @@ impl Middleware for Compression {
   ) -> Response<Body> {
     let encoding = get_preferred_encoding(request.headers());
     let response = chain.forward_request(request, context).await;
-    if let Some(encoding) = encoding {
+    if let Some(encoding) = encoding.filter(|_| !response.headers().contains_key(CONTENT_ENCODING)) {
       self.compress_response(response, &encoding)
     } else {
       response

@@ -122,10 +122,15 @@ where
   P: AsRef<Path>,
 {
   let config = TomlConfig::read(&path)?;
-  runtime_config_from_toml_config(config, acme_handler, init_acme).await
+  let canonical_path = path.as_ref().canonicalize()?;
+  let config_dir = canonical_path
+    .parent()
+    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Config path does not have a parrent"))?;
+  runtime_config_from_toml_config(config_dir, config, acme_handler, init_acme).await
 }
 
-async fn runtime_config_from_toml_config(
+async fn runtime_config_from_toml_config<P: AsRef<Path>>(
+  config_dir: P,
   other: TomlConfig,
   acme_handler: Arc<AcmeHandler>,
   init_acme: bool,
@@ -141,7 +146,7 @@ async fn runtime_config_from_toml_config(
       .map_err(invalid_data)?
       .to_owned();
     if init_acme || !matches!(certificate_config, CertificateConfig::ACME { .. }) {
-      let certificate = create_certified_key(certificate_config, dns_name.as_ref(), &acme_handler).await?;
+      let certificate = create_certified_key(&config_dir, certificate_config, dns_name.as_ref(), &acme_handler).await?;
       certificates.insert(dns_name, certificate);
     }
   }
@@ -161,7 +166,8 @@ async fn runtime_config_from_toml_config(
   })
 }
 
-async fn create_certified_key(
+async fn create_certified_key<P: AsRef<Path>>(
+  config_dir: P,
   config: CertificateConfig,
   sni_name: DNSNameRef<'_>,
   acme_handler: &AcmeHandler,
@@ -170,12 +176,17 @@ async fn create_certified_key(
     CertificateConfig::Local {
       certificate_path,
       private_key_path,
-    } => load_certified_key(certificate_path, private_key_path)?,
+    } => {
+      let certificate_path = config_dir.as_ref().join(certificate_path);
+      let private_key_path = config_dir.as_ref().join(private_key_path);
+      load_certified_key(certificate_path, private_key_path)?
+    }
     CertificateConfig::ACME {
       staging,
       email,
       persist_dir,
     } => {
+      let persist_dir = config_dir.as_ref().join(persist_dir);
       // TODO refresh certificates once they expire?
       let certificate = acme_handler
         .initiate_challenge(staging, &persist_dir, &email, sni_name.into())

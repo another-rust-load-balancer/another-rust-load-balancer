@@ -39,7 +39,7 @@ If the backend server responds with a matching status code, a HTML file named `{
 
 ```toml
 [backend_pools.middlewares.CustomErrorPages]
-location = "../../errorpages"
+location = "examples/errorpages"
 errors = [404, 500]
 ```
 

@@ -1,7 +1,7 @@
 # Another Rust Load Balancer
 
 <p align="center">
-<img src="assets/logo_400x400.png" alt="Traefik" title="Traefik" />
+<img src="assets/logo_400x400.png" alt="ARLB" title="ARLB" />
 </p>
 
 ARLB (Another Rust Load Balancer) is a reverse proxy and load balancer written in Rust based on `hyper` and `tokio`.

@@ -72,3 +72,8 @@ jobs:
           prerelease: false
           files: |
             artifacts/**/*
+      - name: Release | Purge Artifacts
+        uses: kolpav/purge-artifacts-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          expire-in: 0

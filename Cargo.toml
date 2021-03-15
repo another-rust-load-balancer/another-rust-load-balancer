@@ -3,11 +3,11 @@ name = "another-rust-load-balancer"
 version = "1.0.0"
 authors = [
   "Adrodoc <adrodoc55@googlemail.com>",
-  "Zynaa <zyna1+github@protonmail.com>",
   "Jonas Dellinger <jonas@dellinger.dev>",
   "lor-enz <git@lorenz.kiwi>",
   "Martinif <silas@gaf.fs.lmu.de>",
   "skess42 <skagaros@gmail.com>",
+  "Zynaa <zyna1+github@protonmail.com>",
 ]
 edition = "2018"
 

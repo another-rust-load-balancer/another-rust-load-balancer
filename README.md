@@ -51,8 +51,8 @@ Please have a look at the [Getting Started](docs/getting_started.md) guide.
 This project was created for the `High level languages: Rust` course (winter term 20/21) of LMU Munich.
 
 - Adrodoc
-- Zynaa
 - Jonas Dellinger
 - lor-enz
 - Martinif
 - skess42
+- Zynaa

@@ -35,6 +35,7 @@ linked-hash-map = "0.5"
 log = "0.4"
 log4rs = "1.0"
 notify = "4.0"
+openssl-sys = { version = "0.9", features = ["vendored"] }
 pin-project = "1.0"
 pom = "3.2"
 rand = "0.8"

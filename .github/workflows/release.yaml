@@ -22,7 +22,7 @@ jobs:
         include:
           - filename: another-rust-load-balancer.exe
             target: x86_64-pc-windows-gnu
-            platform: windows-latest
+            platform: ubuntu-20.04
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Setup | Checkout

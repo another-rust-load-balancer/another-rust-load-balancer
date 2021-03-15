@@ -39,7 +39,7 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} --release
       - name: Release | Upload Artifact
         uses: actions/upload-artifact@v2
         with:

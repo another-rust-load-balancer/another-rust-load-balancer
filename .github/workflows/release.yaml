@@ -20,9 +20,9 @@ jobs:
           - armv7-unknown-linux-musleabihf
         platform: [ubuntu-20.04]
         include:
-          - platform: windows-latest
+          - filename: another-rust-load-balancer.exe
             target: x86_64-pc-windows-gnu
-            filename: another-rust-load-balancer.exe
+            platform: windows-latest
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Setup | Checkout
@@ -39,12 +39,12 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --target ${{ matrix.platform }}
+          args: --target ${{ matrix.target }}
       - name: Release | Upload Artifact
         uses: actions/upload-artifact@v2
         with:
-          name: arlb-${{ matrix.platform }}-${{ github.ref }}
-          path: target/${{ matrix.platform }}/release/${{ matrix.filename }}
+          name: arlb-${{ matrix.target }}-${{ github.ref }}
+          path: target/${{ matrix.target }}/release/${{ matrix.filename }}
           retention-days: 1
 
   release:

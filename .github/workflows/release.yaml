@@ -27,6 +27,9 @@ jobs:
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v2
+      - name: Setup | Version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
       - name: Setup | Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -43,7 +46,7 @@ jobs:
       - name: Release | Upload Artifact
         uses: actions/upload-artifact@v2
         with:
-          name: arlb-${{ matrix.target }}-${{ github.ref }}
+          name: arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}
           path: target/${{ matrix.target }}/release/${{ matrix.filename }}
           retention-days: 1
 

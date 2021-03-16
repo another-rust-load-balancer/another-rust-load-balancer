@@ -12,7 +12,7 @@ jobs:
   build:
     strategy:
       matrix:
-        file-extension: ['']
+        file-extension: [""]
         target:
           - x86_64-unknown-linux-musl
           - x86_64-unknown-linux-gnu
@@ -52,8 +52,41 @@ jobs:
           path: arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}${{ matrix.file-extension }}
           retention-days: 1
 
+  build-docker:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+      - name: Setup | Docker meta
+        id: docker_meta
+        uses: crazy-max/ghaction-docker-meta@v1
+        with:
+          images: arlb/another-rust-load-balancer
+          tag-semver: |
+            {{version}}
+            {{major}}.{{minor}}
+            -
+      - name: Setup | QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Setup | Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Setup | Docker Login
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_PASSWORD }}
+          password: ${{ secrets.DOCKER_USERNAME }}
+      - name: Build | Build and Push
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
+
   release:
-    needs: build
+    needs: [build, build-docker]
     runs-on: ubuntu-20.04
     steps:
       - name: Release | Download Artifacts
@@ -76,4 +109,4 @@ jobs:
         uses: kolpav/purge-artifacts-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          expire-in: '0d'
+          expire-in: "0d"

@@ -1,0 +1,79 @@
+name: Release CI/CD
+
+on:
+  push:
+    tags:
+      - "*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        file-extension: ['']
+        target:
+          - x86_64-unknown-linux-musl
+          - x86_64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+          - armv7-unknown-linux-musleabihf
+        platform: [ubuntu-20.04]
+        include:
+          - file-extension: .exe
+            target: x86_64-pc-windows-gnu
+            platform: ubuntu-20.04
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+      - name: Setup | Version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      - name: Setup | Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: ${{ matrix.target }}
+          override: true
+      - name: Build | Release
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --target ${{ matrix.target }} --release
+      - name: Build | Rename with Target
+        run: cp target/${{ matrix.target }}/release/another-rust-load-balancer${{ matrix.file-extension }} arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}${{ matrix.file-extension }}
+      - name: Release | Upload Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}${{ matrix.file-extension }}
+          path: arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}${{ matrix.file-extension }}
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Release | Download Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: artifacts
+      - name: Release | GitHub
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: ARLB ${{ github.ref }}
+          body: |
+            TODO
+          draft: true
+          prerelease: false
+          files: |
+            artifacts/**/*
+      - name: Release | Purge Artifacts
+        uses: kolpav/purge-artifacts-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          expire-in: '0d'

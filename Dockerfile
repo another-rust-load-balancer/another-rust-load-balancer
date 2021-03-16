@@ -4,22 +4,14 @@ ENV WORKDIR /code
 WORKDIR ${WORKDIR}
 
 RUN rustup target add x86_64-unknown-linux-musl && \
-  apk add --no-cache musl-dev perl make gcc && \
-  USER=root cargo new another-rust-load-balancer
+  apk add --no-cache musl-dev perl make gcc
 
-WORKDIR ${WORKDIR}/another-rust-load-balancer
+ADD . .
 
-ADD Cargo.toml ./Cargo.toml
-ADD Cargo.lock ./Cargo.lock
+RUN cargo build --release --target x86_64-unknown-linux-musl
 
-RUN cargo build --release
+FROM scratch as runner
 
-COPY src ./src
-
-RUN cargo install --target x86_64-unknown-linux-musl --path .
-
-FROM scratch
-
-COPY --from=builder /usr/local/cargo/bin/another-rust-load-balancer /usr/bin/another-rust-load-balancer
+COPY --from=builder /code/target/x86_64-unknown-linux-musl/release/another-rust-load-balancer /usr/bin/another-rust-load-balancer
 
 CMD ["another-rust-load-balancer"]

@@ -12,7 +12,7 @@ jobs:
   build:
     strategy:
       matrix:
-        filename: [another-rust-load-balancer]
+        file-extension: ['']
         target:
           - x86_64-unknown-linux-musl
           - x86_64-unknown-linux-gnu
@@ -20,7 +20,7 @@ jobs:
           - armv7-unknown-linux-musleabihf
         platform: [ubuntu-20.04]
         include:
-          - filename: another-rust-load-balancer.exe
+          - file-extension: .exe
             target: x86_64-pc-windows-gnu
             platform: ubuntu-20.04
     runs-on: ${{ matrix.platform }}
@@ -44,12 +44,12 @@ jobs:
           command: build
           args: --target ${{ matrix.target }} --release
       - name: Build | Rename with Target
-        run: cp target/${{ matrix.target }}/release/${{ matrix.filename }} arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}
+        run: cp target/${{ matrix.target }}/release/another-rust-load-balancer${{ matrix.file-extension }} arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}${{ matrix.file-extension }}
       - name: Release | Upload Artifact
         uses: actions/upload-artifact@v2
         with:
-          name: arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}
-          path: arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}
+          name: arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}${{ matrix.file-extension }}
+          path: arlb-${{ matrix.target }}-${{ steps.get_version.outputs.VERSION }}${{ matrix.file-extension }}
           retention-days: 1
 
   release:
@@ -65,7 +65,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          release_name: ARLB ${{ github.ref }}
+          name: ARLB ${{ github.ref }}
           body: |
             TODO
           draft: true
@@ -76,4 +76,4 @@ jobs:
         uses: kolpav/purge-artifacts-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          expire-in: 0
+          expire-in: '0d'

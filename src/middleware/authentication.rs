@@ -117,7 +117,7 @@ mod tests {
   async fn test_user_authentication_wrong_protocol() {
     // given:
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, "Bearer fpKL54jvWmEGVoRdCNjG".parse().unwrap());
+    headers.insert(AUTHORIZATION, "Bearer fpKL53jvWnEGVoRdCNjG".parse().unwrap());
     let ldap_address = "ldap://172.28.1.7:1389".to_string();
     let user_directory = "ou=users,dc=example,dc=org".to_string();
     let rdn_identifier = "cn".to_string();
@@ -141,8 +141,8 @@ mod tests {
   async fn test_user_authentication_basic_authorized() {
     // given:
     let mut headers = HeaderMap::new();
-    //authorized user tyrion:foo
-    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmZvbw==".parse().unwrap());
+    //authorized user user01:password1
+    headers.insert(AUTHORIZATION, "Basic dXNlcjAxOnBhc3N3b3JkMQ==".parse().unwrap());
     let ldap_address = "ldap://172.28.1.7:1389".to_string();
     let user_directory = "ou=users,dc=example,dc=org".to_string();
     let rdn_identifier = "cn".to_string();
@@ -166,7 +166,7 @@ mod tests {
   async fn test_user_authentication_basic_unauthorized() {
     // given:
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmFicg==".parse().unwrap());
+    headers.insert(AUTHORIZATION, "Basic dXNlcjAxOnBhc3N3b3JkMP==".parse().unwrap());
     let ldap_address = "ldap://172.28.1.7:1389".to_string();
     let user_directory = "ou=users,dc=example,dc=org".to_string();
     let rdn_identifier = "cn".to_string();
@@ -190,7 +190,7 @@ mod tests {
   async fn test_user_authentication_invalid_user_directory() {
     // given:
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmZvbw==".parse().unwrap());
+    headers.insert(AUTHORIZATION, "Basic dXNlcjAxOnBhc3N3b3JkMQ==".parse().unwrap());
     let ldap_address = "ldap://172.28.1.7:1389".to_string();
     let user_directory = "ou=org,dc=example,dc=org".to_string();
     let rdn_identifier = "cn".to_string();
@@ -213,7 +213,7 @@ mod tests {
   async fn test_user_authentication_invalid_ldap_address() {
     // given:
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmZvbw==".parse().unwrap());
+    headers.insert(AUTHORIZATION, "Basic dXNlcjAxOnBhc3N3b3JkMQ==".parse().unwrap());
     let ldap_address = "ldap://172.28.1.7:1386".to_string();
     let user_directory = "ou=users,dc=example,dc=org".to_string();
     let rdn_identifier = "cn".to_string();
@@ -237,7 +237,7 @@ mod tests {
   async fn test_user_authentication_recursive() {
     // given:
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, "Basic dHlyaW9uOmZvbw==".parse().unwrap());
+    headers.insert(AUTHORIZATION, "Basic dXNlcjAxOnBhc3N3b3JkMQ==".parse().unwrap());
     let ldap_address = "ldap://172.28.1.7:1389".to_string();
     let user_directory = "dc=example,dc=org".to_string();
     let rdn_identifier = "cn".to_string();

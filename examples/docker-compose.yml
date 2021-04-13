@@ -49,8 +49,8 @@ services:
     environment:
       - LDAP_ADMIN_USERNAME=admin
       - LDAP_ADMIN_PASSWORD=adminpassword
-      - LDAP_USERS=tyrion,user02
-      - LDAP_PASSWORDS=foo,password2
+      - LDAP_USERS=user01,user02
+      - LDAP_PASSWORDS=password1,password2
     networks:
       testing_net:
         ipv4_address: 172.28.1.7

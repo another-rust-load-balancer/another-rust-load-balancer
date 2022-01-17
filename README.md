@@ -6,6 +6,8 @@
 
 ARLB (Another Rust Load Balancer) is a reverse proxy and load balancer written in Rust based on `hyper` and `tokio`.
 
+> ⚠️  This project is not considered production-ready and should not be used in such a context. It is merely a proof of concept and university project. For production-grade load balancers/reverse proxies, please refer to [NGINX](https://www.nginx.com/), [HAProxy](http://www.haproxy.org/) or [Traefik](https://traefik.io/traefik/).
+
 ## Features
 
 - HTTP & HTTPS Termination

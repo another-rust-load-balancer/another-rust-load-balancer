@@ -33,7 +33,7 @@ use std::{
 use tokio::sync::watch;
 use tokio_rustls::{
   rustls::sign::CertifiedKey,
-  webpki::{DNSName, DNSNameRef},
+  webpki::{DnsName, DnsNameRef},
 };
 use toml::{value::Table, Value};
 
@@ -142,7 +142,7 @@ async fn runtime_config_from_toml_config<P: AsRef<Path>>(
 
   let mut certificates = HashMap::new();
   for (sni_name, certificate_config) in other.certificates {
-    let dns_name = DNSNameRef::try_from_ascii_str(&sni_name)
+    let dns_name = DnsNameRef::try_from_ascii_str(&sni_name)
       .map_err(invalid_data)?
       .to_owned();
     if init_acme || !matches!(certificate_config, CertificateConfig::ACME { .. }) {
@@ -169,7 +169,7 @@ async fn runtime_config_from_toml_config<P: AsRef<Path>>(
 async fn create_certified_key<P: AsRef<Path>>(
   config_dir: P,
   config: CertificateConfig,
-  sni_name: DNSNameRef<'_>,
+  sni_name: DnsNameRef<'_>,
   acme_handler: &AcmeHandler,
 ) -> Result<CertifiedKey, io::Error> {
   let certified_key = match config {
@@ -205,9 +205,10 @@ async fn create_certified_key<P: AsRef<Path>>(
       })?
     }
   };
-  certified_key
-    .cross_check_end_entity_cert(Some(sni_name))
-    .map_err(invalid_data)?;
+  // TODO: cross_check_end_entity_cert
+  // certified_key
+  //   .cross_check_end_entity_cert(Some(sni_name))
+  //   .map_err(invalid_data)?;
   Ok(certified_key)
 }
 
@@ -252,7 +253,7 @@ pub struct RuntimeConfig {
   pub http_address: SocketAddr,
   pub https_address: SocketAddr,
   pub shared_data: SharedData,
-  pub certificates: HashMap<DNSName, CertifiedKey>,
+  pub certificates: HashMap<DnsName, CertifiedKey>,
   pub health_interval: Duration,
 }
 

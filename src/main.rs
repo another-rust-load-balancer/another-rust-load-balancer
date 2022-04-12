@@ -1,12 +1,12 @@
 use arc_swap::{access::Map, ArcSwap};
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use configuration::{read_initial_config, watch_config, RuntimeConfig};
 use listeners::{AcceptorProducer, Https};
 use server::Scheme;
 use std::{io, sync::Arc};
 use tls::ReconfigurableCertificateResolver;
 use tokio::try_join;
-use tokio_rustls::rustls::{NoClientAuth, ServerConfig};
+use tokio_rustls::rustls::{ServerConfig, ALL_CIPHER_SUITES};
 
 mod acme;
 mod backend_pool_matcher;
@@ -24,12 +24,12 @@ mod utils;
 
 #[tokio::main]
 pub async fn main() -> Result<(), io::Error> {
-  let matches = App::new("Another Rust Load Balancer")
+  let matches = Command::new("Another Rust Load Balancer")
     .version("1.0")
     .about("It's basically just another rust load balancer")
     .arg(
-      Arg::with_name("config")
-        .short("c")
+      Arg::new("config")
+        .short('c')
         .long("config")
         .value_name("TOML FILE")
         .help("The path to the configuration in TOML format.")
@@ -67,10 +67,15 @@ async fn listen_for_http_request(config: Arc<ArcSwap<RuntimeConfig>>) -> Result<
 }
 
 async fn listen_for_https_request(config: Arc<ArcSwap<RuntimeConfig>>) -> Result<(), io::Error> {
-  let mut tls_config = ServerConfig::new(NoClientAuth::new());
   let certificates = Map::new(config.clone(), |it: &RuntimeConfig| &it.certificates);
   let cert_resolver = ReconfigurableCertificateResolver::new(certificates);
-  tls_config.cert_resolver = Arc::new(cert_resolver);
+  let tls_config = ServerConfig::builder()
+    .with_cipher_suites(ALL_CIPHER_SUITES)
+    .with_safe_default_kx_groups()
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .with_no_client_auth()
+    .with_cert_resolver(Arc::new(cert_resolver));
 
   let https = Https { tls_config };
   let address = config.load().https_address;

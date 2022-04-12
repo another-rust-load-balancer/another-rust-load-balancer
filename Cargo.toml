@@ -9,41 +9,58 @@ authors = [
   "skess42 <skagaros@gmail.com>",
   "Zynaa <zyna1+github@protonmail.com>",
 ]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.release]
+opt-level = 3
+debug = 0
+# split-debuginfo="off"
+strip = "symbols"
+debug-assertions=false
+overflow-checks=false
+lto=true
+panic="abort"
+incremental=true
+codegen-units=1
+rpath=true
+
 [dependencies]
 acme-lib = "0.8"
-arc-swap = "1.2"
+arc-swap = "1.5"
 async-compression = { version = "0.3", features = ["brotli", "deflate", "gzip", "tokio"] }
 async-stream = "0.3"
 async-trait = "0.1"
-bytes = "0.5"
-chrono = "0.4"
-clap = "2.33"
-cookie = "0.14"
+clap = "3.1"
+cookie = "0.16"
 futures = "0.3"
-futures-util = "0.3"
 gethostname = "0.2"
-http-auth-basic = "0.1"
-hyper = { version = "0.14", features = ["client", "server", "http1", "http2", "stream"] }
-hyper-rustls = "0.22"
+http-auth-basic = "0.3"
+hyper = { version = "0.14", features = ["client", "server", "http1", "http2", "stream", "tcp"] }
+ldap3 = "0.10"
 hyper-timeout = "0.4"
-ldap3 = "0.9"
 linked-hash-map = "0.5"
 log = "0.4"
 log4rs = "1.0"
 notify = "4.0"
-openssl-sys = { version = "0.9", features = ["vendored"] }
 pin-project = "1.0"
 pom = "3.2"
 rand = "0.8"
-regex = "1.4"
+regex = "1.5"
 serde = { version = "1.0", features = ["derive"] }
-tokio = {version = "1.0", features = ["full"] }
-tokio-rustls = "0.22"
-tokio-test = "0.4"
-tokio-util = { version = "0.6", features = ["full"] }
+tokio = {version = "1.17", features = ["full"] }
+tokio-rustls = "0.23"
+tokio-util = { version = "0.7", features = ["full"] }
 toml = { version = "0.5", features = ["preserve_order"] }
 url = "2.2"
+rustls-pemfile = "0.3"
+openssl-sys = { version = "0.9", features = ["vendored"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+bytes = { version = "1.1", features = ["serde"] }
+chrono = "0.4"
+futures-util = "0.3.21"
+hyper-rustls = "0.23"
+
